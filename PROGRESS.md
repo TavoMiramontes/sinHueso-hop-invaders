@@ -4,7 +4,7 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 
 > *"Las cervezas sin sabor han invadido Sin Hueso. Tu misión es defender el último lote de cerveza artesanal."*
 
-## Estado actual: Etapas 1 y 2 completas ✅
+## Estado actual: Etapas 1, 2 y 3 completas ✅
 
 **El plan completo por etapas está al final de este archivo.** Trabajamos etapa por etapa: el usuario prueba cada una (PC + celular) y se ajusta antes de avanzar.
 
@@ -18,13 +18,19 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 - `serve.js` — servidor local para probar en el celular: `node serve.js` → abrir `http://<IP-de-la-PC>:8080` (misma WiFi; la IP la imprime el script).
 - Calibración validada por el usuario: movimiento y disparo bien; dificultad "un poco fácil" aún — se espera que la Etapa 3 (jefe) la suba.
 
-### Siguiente paso: Etapa 3 — Rey Hueso, power-ups y bonos
-- 👹 Rey Hueso aparece al segundo 40: barra de vida, ráfagas, patrón de movimiento. 500 pts + 250 de bonus por derrotarlo.
-- Power-ups que sueltan enemigos: 🍃 Hop Shot (doble disparo), 🔥 Triple IPA (triple), 🍺 Barril Explosivo (limpia pantalla), ⚡ Nitro (velocidad), ❤️ Vida extra.
-- Bonos: +100 por 15s sin daño, +500 por sobrevivir el minuto.
+### Etapa 3 hecha (validada por el usuario: "casi imposible ganarle, genial")
+- 👹 Rey Hueso = la mano de la etiqueta (`IMG_4624.png`) con corona y ojo en la palma; emerge de la singularidad al seg 40 (erupción + fondo rojizo de tensión). 52 HP, ráfagas dirigidas, abanicos de orbes y ataque en picada. +750 al derrotarlo.
+- Fondo parallax: nebulosas, singularidad animada (disco de acreción), elementos de la etiqueta (máscara/flores/hongos), insumos (lúpulo/trigo/barril/olla/botella) y el borracho flotante con hipo.
+- Power-ups: 🍃 doble, 🔥 triple, 🍺 barril limpia-pantalla, ⚡ nitro (+80%, estela), ❤️ +1 pinta (13%). 11% de drop; durante el jefe caen del cielo cada ~5s.
+- CAOS FINAL (últimos 10s con jefe vivo): todo más rápido, lluvia de orbes, huesos kamikaze, el borracho lanza botellazos.
+- REGLA: solo ganas si derrotas al Rey Hueso; si el tiempo acaba con él vivo → cataclismo (todo explota, "EL REY HUESO GANÓ").
+- Balas cambian de color: por oleada (teal→cian→verde→amarillo→ámbar→rojo) y por arma (verde=hop, fuego=IPA).
+- Bonos: +100 por 15s sin daño (racha), +500 por sobrevivir (solo al ganar).
+
+### Siguiente paso: Etapa 4 — Presentación completa (sin backend aún)
 
 ### Etapas restantes
-- **Etapa 4:** resultado con rango ⭐–⭐⭐⭐, captura de nombre (≤10 chars, filtro de groserías), Salón de la Fama local con pestañas Hoy/Semana/Mes/Histórico, audio chiptune (Web Audio API) + botón mute.
+- **Etapa 4:** resultado con rango ⭐–⭐⭐⭐, captura de nombre (≤10 chars, filtro de groserías), Salón de la Fama local con pestañas Hoy/Semana/Mes/Histórico, audio chiptune (Web Audio API) + botón mute, pulido móvil final.
 - **Etapa 5:** Supabase — tabla `scores` con RLS y CHECK anti-trampa, tabla `config`, ranking compartido con fallback offline a localStorage, `admin.html` con login del dueño, `supabase-schema.sql`, README.
 - **Etapa 6:** eventos re-skin activables desde admin (Oktoberfest, Halloween, Navidad, Independencia 🇲🇽) y deploy a GitHub Pages (URL para el tag NFC).
 

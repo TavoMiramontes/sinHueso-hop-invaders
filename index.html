@@ -83,6 +83,10 @@ const CFG = {
   beerInterval: 4.6,      // s entre cervezas industriales (baja con oleadas)
   canFireBase: 3.4,       // cadencia base de disparo de las latas (s)
   dropSpeed: 235,         // velocidad del proyectil enemigo (px/s)
+  bossAt: 40,             // segundo en que emerge el Rey Hueso
+  bossHp: 52,             // vida del jefe
+  powerDropChance: 0.11,  // probabilidad de que un enemigo suelte power-up
+  powerTime: 8,           // duración de los power-ups temporales (s)
 };
 
 // ============================================================
@@ -191,8 +195,8 @@ function drawText(str, x, y, px, color, align = 'left') {
 // ============================================================
 const SPRITE_SCALE = 3;
 
-function makeSprite(rows, colors) {
-  const h = rows.length, w = rows[0].length, s = SPRITE_SCALE;
+function makeSprite(rows, colors, scale) {
+  const h = rows.length, w = rows[0].length, s = scale || SPRITE_SCALE;
   const c = document.createElement('canvas');
   c.width = w * s; c.height = h * s;
   const g = c.getContext('2d');
@@ -288,13 +292,27 @@ const sprBeer = makeSprite([
   '.GGGGG.',
 ], { G: PAL.green, H: PAL.greenHi, D: PAL.gry2, Y: PAL.yellow, k: PAL.dark });
 
-// Chorro de espuma (bala del jugador)
-const sprBullet = makeSprite([
-  '.W.',
-  'WWW',
-  'WWW',
-  '.F.',
-], { W: PAL.foam, F: PAL.tealSoft });
+// Chorro de espuma (bala del jugador) — el color evoluciona con las
+// oleadas, y los power-ups tienen colores propios
+function makeBullet(colHead, colTail) {
+  return makeSprite([
+    '.W.',
+    'WWW',
+    'CCC',
+    '.C.',
+  ], { W: colHead, C: colTail });
+}
+// un color por nivel de oleada (1-2, 3-4, 5-6, 7-8, 9-10, 11+)
+const sprBulletTiers = [
+  makeBullet(PAL.foam, PAL.tealSoft),
+  makeBullet(PAL.foam, '#4ecbe8'),
+  makeBullet(PAL.foam, PAL.greenHi),
+  makeBullet(PAL.foam, PAL.yellow),
+  makeBullet(PAL.foam, PAL.amberHi),
+  makeBullet(PAL.foam, PAL.redHi),
+];
+const sprBulletHop = makeBullet(PAL.greenHi, PAL.green);
+const sprBulletIpa = makeBullet(PAL.yellow, PAL.red);
 
 // Gota enemiga (proyectil de las latas)
 const sprDrop = makeSprite([
@@ -312,6 +330,232 @@ const sprLife = makeSprite([
   'AAAA.D',
   '.DDD..',
 ], { W: PAL.foam, A: PAL.amber, L: PAL.amberHi, D: PAL.amberLo });
+
+// ============================================================
+//  Sprites del fondo (elementos de la etiqueta y la cervecería,
+//  en tonos apagados para no competir con el gameplay)
+// ============================================================
+
+// Máscara de piedra de la etiqueta (capa lejana, easter egg)
+const sprMask = makeSprite([
+  '...MMMMMM...',
+  '..MMMMMMMM..',
+  '.MMHMMMMMMM.',
+  '.MDDMMMMDDM.',
+  '.MMMMMMMMMM.',
+  '.MMMMDDMMMM.',
+  '.MMMDDDDMMM.',
+  '.MMMMMMMMMM.',
+  '..MDDDDDDM..',
+  '..MMMMMMMM..',
+  '...MMMMMM...',
+], { M: '#33495a', D: '#22333f', H: '#48627a' }, 2);
+
+// Flor blanca de la etiqueta (capa lejana)
+const sprFlowerBg = makeSprite([
+  '.F.F.F.',
+  'FFFFFFF',
+  '.FFOFF.',
+  'FFFFFFF',
+  '.F.F.F.',
+], { F: '#8f8b82', O: '#8a6a1e' }, 2);
+
+// Hongo de la etiqueta (capa lejana)
+const sprMushBg = makeSprite([
+  '..CCCC..',
+  '.CCCCCC.',
+  'CCHCCHCC',
+  '...SS...',
+  '...SS...',
+  '..SSS...',
+], { C: '#6a4e2c', H: '#8a6a3e', S: '#7d7362' }, 2);
+
+// Cono de lúpulo (capa media)
+const sprHopBg = makeSprite([
+  '...GG....',
+  '..GGGG...',
+  '.GHGGHG..',
+  '.GGGGGG..',
+  'GHGGHGGH.',
+  '.GGGGGG..',
+  '.GHGGHG..',
+  '..GGGG...',
+  '...GG....',
+], { G: '#2f5e3a', H: '#3f7d4c' });
+
+// Espiga de trigo (capa media)
+const sprWheatBg = makeSprite([
+  '..W..',
+  '.WWW.',
+  '..W..',
+  '.WWW.',
+  '..W..',
+  '.WWW.',
+  '..W..',
+  '..S..',
+  '..S..',
+  '..S..',
+], { W: '#8a6a1e', S: '#5e6a3a' });
+
+// Barril / keg (capa media)
+const sprKegBg = makeSprite([
+  '.KKKKKKKK.',
+  'KKKKKKKKKK',
+  'KDDDDDDDDK',
+  'KKHKKKKKKK',
+  'KKHKKKKKKK',
+  'KDDDDDDDDK',
+  'KKKKKKKKKK',
+  '.KKKKKKKK.',
+], { K: '#3a5560', D: '#28404a', H: '#547684' });
+
+// Olla de cocción de cobre (capa media)
+const sprKettleBg = makeSprite([
+  '....CCCC....',
+  '..CCCCCCCC..',
+  '.CCCCCCCCCD.',
+  '.CHCCCCCCCD.',
+  '.CHCCCCCCCC.',
+  '.CCCCCCCCCC.',
+  '.CCCCCCCCCC.',
+  '..CCCCCCCC..',
+  '...C....C...',
+], { C: '#7a4e20', H: '#a06d38', D: '#4a5560' });
+
+// Botella ámbar (capa media)
+const sprBottleBg = makeSprite([
+  '..A..',
+  '..A..',
+  '..A..',
+  '.AAA.',
+  'AAAAA',
+  'AHAAA',
+  'AHAAA',
+  'AAAAA',
+  '.AAA.',
+], { A: '#7a4e14', H: '#a06d10' });
+
+// El borracho flotante (flota en gravedad cero, feliz)
+const sprDrunk = makeSprite([
+  '....HHH....',
+  '...HFFFH...',
+  '...FkFkF...',
+  '...FFrFF...',
+  '.S.SSSSS.S.',
+  'SS.SSSSS.SS',
+  'SB..SSS..SS',
+  '.B..SSS....',
+  '...PP.PP...',
+  '...PP.PP...',
+  '...bb.bb...',
+], { H: '#6a4a26', F: '#d9a066', k: PAL.dark, r: '#c46a6a',
+     S: '#3e6a7d', P: '#39434e', b: '#22333f', B: '#a06d10' });
+
+// Nebulosas: manchas de pixeles dispersos generadas al cargar
+function makeNebula(wpx, hpx, colors) {
+  const c = document.createElement('canvas');
+  const s = 4;
+  c.width = wpx * s; c.height = hpx * s;
+  const g = c.getContext('2d');
+  for (let y = 0; y < hpx; y++) {
+    for (let x = 0; x < wpx; x++) {
+      // elipse con densidad que cae hacia el borde
+      const dx = (x - wpx / 2) / (wpx / 2), dy = (y - hpx / 2) / (hpx / 2);
+      const d = dx * dx + dy * dy;
+      if (d < 1 && Math.random() > d * 1.3) {
+        g.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+        g.fillRect(x * s, y * s, s, s);
+      }
+    }
+  }
+  return c;
+}
+
+// ============================================================
+//  El Rey Hueso: la mano de la etiqueta, con corona y el ojo
+//  en la palma desde donde dispara
+// ============================================================
+const sprBoss = makeSprite([
+  '....C.C.C......',
+  '....CCCCC......',
+  '.HH.HH.HH.HH...',
+  '.HD.HD.HD.HD...',
+  '.HD.HD.HD.HD...',
+  '.HDHHDHHDHHD...',
+  '.HHHHHHHHHHH...',
+  '.HHHHHHHHHHH.HH',
+  '.HHHHHHHHHHHHHD',
+  '.HHHHHHHHHHHHD.',
+  '.HHHRRRRRHHHD..',
+  '.HHRRWWWRRHHD..',
+  '.HHRWWWWWRHHD..',
+  '.HHRWIIIWRHHD..',
+  '.HHRWIPIWRHHD..',
+  '.HHRWIIIWRHHD..',
+  '.HHRRWWWRRHHD..',
+  '.HHHRRRRRHHHD..',
+  '..HHHHHHHHHD...',
+  '..DDDDDDDDDD...',
+  '...DDDDDDDD....',
+], { H: '#5a7186', D: '#3d5163', C: PAL.amberHi, R: '#c98a8a',
+     W: PAL.foam, I: PAL.tealSoft, P: PAL.dark }, 4);
+const sprBossFlash = makeFlash(sprBoss);
+
+// Orbe púrpura (proyectil del ojo del Rey Hueso)
+const sprOrb = makeSprite([
+  '.PP.',
+  'PHHP',
+  'PHHP',
+  '.PP.',
+], { P: PAL.purple, H: PAL.redHi });
+
+// ---- Iconos de power-ups ----
+const icoHop = makeSprite([
+  '...GG..',
+  '..GGGG.',
+  '.GHGGHG',
+  '..GGGG.',
+  '...GG..',
+  '...G...',
+  '.......',
+], { G: PAL.green, H: PAL.greenHi });
+const icoFire = makeSprite([
+  '...R...',
+  '..RR...',
+  '..RRR..',
+  '.RRYR..',
+  '.RYYR..',
+  '.RYYRR.',
+  '..YY...',
+], { R: PAL.red, Y: PAL.yellow });
+const icoBarrel = makeSprite([
+  '.KKKKK.',
+  'KDKKKDK',
+  'KKKKKKK',
+  'KDKKKDK',
+  'KKKKKKK',
+  '.KKKKK.',
+  '.......',
+], { K: '#a06d38', D: '#5e3d1a' });
+const icoBolt = makeSprite([
+  '...YY..',
+  '..YY...',
+  '.YYYY..',
+  '...YY..',
+  '..YY...',
+  '.YY....',
+  '.......',
+], { Y: PAL.yellow });
+const icoHeart = makeSprite([
+  '.RR.RR.',
+  'RRRRRRR',
+  'RRRRRRR',
+  '.RRRRR.',
+  '..RRR..',
+  '...R...',
+  '.......',
+], { R: PAL.red });
+const PICKUP_ICONS = { hop: icoHop, ipa: icoFire, barrel: icoBarrel, nitro: icoBolt, life: icoHeart };
 
 // ---- Tipos de enemigo ----
 const ETYPES = {
@@ -341,11 +585,32 @@ const S = {
   survived: 0,
   won: false,
   shake: 0,
+  flashT: 0,             // destello blanco (barril explosivo)
+  noDmgT: 0,             // racha sin recibir daño (bonus cada 15s)
+  bossKilled: false,
+  tension: 0,            // tinte rojizo del fondo durante el jefe
+  chaosAnnounced: false, // aviso del caos final
+  rainT: 0, kamiT: 0, btlT: 0,   // spawners del caos
+  boomT: 0, boomSpawn: 0,        // cataclismo si el jefe sobrevive
+  cataclysmed: false,
   endCooldown: 0,
   best: Number(localStorage.getItem('sh_best') || 0),
 };
 
-const player = { x: W / 2, y: H - 74, w: 34, h: 30, fireT: 0, invuln: 0 };
+const player = {
+  x: W / 2, y: H - 74, w: 34, h: 30, fireT: 0, invuln: 0,
+  weapon: 'normal', weaponT: 0,   // hop = doble, ipa = triple
+  nitroT: 0,
+};
+
+// El Rey Hueso (estado del jefe)
+const boss = {
+  spawned: false, state: 'off',   // off | enter | fight | dead
+  x: 0, y: 0, hp: 0, scale: 1, t: 0,
+  phase: 0, atkT: 0, pat: false, burstN: 0, burstT: 0, flash: 0,
+};
+
+let pickups = [];     // power-ups cayendo {x, y, type, phase}
 let bullets = [];     // {x, y}
 let groups = [];      // formaciones de enemigos
 let divers = [];      // enemigos en picada {x, y, vx, vy, type, hp, flash}
@@ -353,10 +618,12 @@ let beers = [];       // cervezas industriales en zigzag
 let drops = [];       // proyectiles enemigos {x, y, vx, vy}
 let particles = [];   // {x, y, vx, vy, life, max, color, size}
 let popups = [];      // {x, y, text, life}
-let bubbles = [];     // fondo: burbujas que suben
-let stars = [];       // fondo: motas que bajan (parallax)
+let bubbles = [];     // fondo: burbujas que suben (capa más cercana)
+let stars = [];       // fondo: estrellas que bajan (capa más lejana)
 
-// ---- Fondo con scroll infinito ----
+// ============================================================
+//  Fondo parallax: universo → singularidad → etiqueta → insumos
+// ============================================================
 for (let i = 0; i < 26; i++) {
   bubbles.push({
     x: Math.random() * W, y: Math.random() * H,
@@ -372,6 +639,55 @@ for (let i = 0; i < 40; i++) {
     s: Math.random() < 0.7 ? 1 : 2,
   });
 }
+
+// Nebulosas lejanas (casi estáticas)
+const nebSprites = [
+  makeNebula(30, 16, ['#123240', '#1c4152', '#251c3f']),
+  makeNebula(22, 12, ['#251c3f', '#2f2450', '#123240']),
+];
+let nebulas = [
+  { spr: nebSprites[0], x: 40, y: 180, v: 2.5 },
+  { spr: nebSprites[1], x: 300, y: 480, v: 3.5 },
+];
+
+// La singularidad: agujero negro con disco de acreción girando.
+// En la Etapa 3, el Rey Hueso emergerá de aquí (singularityFlare()).
+const sing = {
+  x: W * 0.72, y: 150,
+  angle: 0,
+  flare: 0,            // 0 = en calma; >0 = erupción en curso
+  debris: [],          // materia cayendo en espiral
+};
+for (let i = 0; i < 7; i++) {
+  sing.debris.push({ a: Math.random() * Math.PI * 2, r: 14 + Math.random() * 26 });
+}
+
+// Erupción de la singularidad (la usará el Rey Hueso en la Etapa 3)
+function singularityFlare() {
+  sing.flare = 1;
+  S.shake = 12;
+}
+
+// Capas de elementos flotantes (lejana = etiqueta, media = insumos)
+function initLayer(sprites, n, vmin, vmax) {
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    items.push({
+      spr: sprites[Math.floor(Math.random() * sprites.length)],
+      x: 20 + Math.random() * (W - 40),
+      y: Math.random() * H,
+      v: vmin + Math.random() * (vmax - vmin),
+      phase: Math.random() * Math.PI * 2,
+      sprites,
+    });
+  }
+  return items;
+}
+let bgFar = initLayer([sprMask, sprFlowerBg, sprMushBg], 3, 9, 15);
+let bgMid = initLayer([sprHopBg, sprWheatBg, sprKegBg, sprKettleBg, sprBottleBg], 4, 26, 40);
+
+// El borracho flotante: cruza la pantalla de vez en cuando
+const drunk = { active: false, x: 0, y: 0, vx: 0, phase: 0, hicT: 0, nextT: 12 + Math.random() * 15 };
 
 // ============================================================
 //  Entrada: teclado + táctil/mouse
@@ -420,11 +736,21 @@ function startGame() {
   S.won = false;
   S.diveT = 3.5;
   S.beerT = CFG.beerInterval;
+  S.flashT = 0;
+  S.noDmgT = 0;
+  S.bossKilled = false;
+  S.tension = 0;
+  S.chaosAnnounced = false;
+  S.rainT = 0; S.kamiT = 0; S.btlT = 0;
+  S.cataclysmed = false;
   player.x = W / 2;
   player.fireT = 0;
   player.invuln = 0;
+  player.weapon = 'normal'; player.weaponT = 0;
+  player.nitroT = 0;
+  boss.spawned = false; boss.state = 'off'; boss.flash = 0;
   bullets = []; groups = []; divers = []; beers = []; drops = [];
-  particles = []; popups = [];
+  pickups = []; particles = []; popups = [];
   spawnWave();
   S.nextWaveT = CFG.waveInterval;
 }
@@ -432,6 +758,7 @@ function startGame() {
 function endGame(won) {
   S.state = 'end';
   S.won = won;
+  if (won) S.score += 500;   // bonus por sobrevivir el minuto completo
   S.endCooldown = 1.0;   // evita reiniciar por accidente con el mismo toque
   if (S.score > S.best) {
     S.best = S.score;
@@ -541,38 +868,157 @@ function update(dt) {
     st.y += st.v * dt;
     if (st.y > H + 4) { st.y = -4; st.x = Math.random() * W; }
   }
+  for (const nb of nebulas) {
+    nb.y += nb.v * dt;
+    if (nb.y > H + 40) { nb.y = -nb.spr.height - 30; nb.x = Math.random() * (W - nb.spr.width); }
+  }
+
+  // Singularidad: disco girando y materia cayendo en espiral
+  sing.angle += dt * 1.1;
+  for (const de of sing.debris) {
+    de.r -= dt * (4 + 40 / de.r);
+    de.a += dt * (46 / de.r);
+    if (de.r < 9) { de.r = 36 + Math.random() * 8; de.a = Math.random() * Math.PI * 2; }
+  }
+  if (sing.flare > 0) sing.flare = Math.max(0, sing.flare - dt * 0.8);
+
+  // Capas parallax de la etiqueta y los insumos
+  for (const layer of [bgFar, bgMid]) {
+    for (const it of layer) {
+      it.y += it.v * dt;
+      it.phase += dt;
+      if (it.y > H + 40) {
+        it.y = -40;
+        it.x = 20 + Math.random() * (W - 40);
+        it.spr = it.sprites[Math.floor(Math.random() * it.sprites.length)];
+      }
+    }
+  }
+
+  // El borracho flotante
+  if (drunk.active) {
+    drunk.x += drunk.vx * dt;
+    drunk.phase += dt;
+    drunk.hicT -= dt;
+    if (drunk.hicT <= 0) {   // burbuja de hipo
+      drunk.hicT = 1.4 + Math.random() * 1.2;
+      if (bubbles.length < 34) {
+        bubbles.push({ x: drunk.x + 10, y: drunk.y - 14, r: 2 + Math.random() * 2,
+                       v: 26 + Math.random() * 14, drift: Math.random() * Math.PI * 2 });
+      }
+    }
+    if (drunk.x < -50 || drunk.x > W + 50) {
+      drunk.active = false;
+      drunk.nextT = 18 + Math.random() * 22;
+    }
+  } else {
+    drunk.nextT -= dt;
+    if (drunk.nextT <= 0) {
+      drunk.active = true;
+      const fromLeft = Math.random() < 0.5;
+      drunk.x = fromLeft ? -40 : W + 40;
+      drunk.vx = (fromLeft ? 1 : -1) * (16 + Math.random() * 10);
+      drunk.y = 130 + Math.random() * 260;
+      drunk.phase = Math.random() * Math.PI * 2;
+      drunk.hicT = 1;
+    }
+  }
 
   if (S.shake > 0) S.shake = Math.max(0, S.shake - dt * 24);
+  if (S.flashT > 0) S.flashT = Math.max(0, S.flashT - dt);
   if (S.state === 'end' && S.endCooldown > 0) S.endCooldown -= dt;
+
+  // ---- Cataclismo: el Rey Hueso sobrevivió, todo explota ----
+  if (S.state === 'boom') {
+    S.boomT -= dt;
+    S.shake = 12;
+    S.tension = Math.min(1, S.tension + dt);
+    boss.scale = (boss.scale || 1) + dt * 0.3;   // la mano se agiganta triunfante
+    S.boomSpawn -= dt;
+    if (S.boomSpawn <= 0) {
+      S.boomSpawn = 0.07;
+      const cols = [PAL.amberHi, PAL.red, PAL.purple, PAL.greenHi];
+      explode(Math.random() * W, Math.random() * H, cols[(Math.random() * cols.length) | 0], 10);
+    }
+    updateFx(dt);
+    if (S.boomT <= 0) endGame(false);
+    return;
+  }
+
   if (S.state !== 'playing') return;
 
   // ---- Reloj de partida ----
   S.matchLeft -= dt;
   S.survived = CFG.matchTime - Math.max(0, S.matchLeft);
-  if (S.matchLeft <= 0) { endGame(true); return; }
+  if (S.matchLeft <= 0) {
+    // SOLO ganas si el Rey Hueso fue derrotado
+    if (boss.state === 'fight' || boss.state === 'enter') startCataclysm();
+    else endGame(true);
+    return;
+  }
 
   // ---- Jugador ----
+  const nitro = player.nitroT > 0 ? 1.8 : 1;
+  // estela de chispas mientras el nitro está activo
+  if (player.nitroT > 0 && Math.random() < 0.6) {
+    particles.push({
+      x: player.x - 10 + Math.random() * 20, y: player.y + 16,
+      vx: (Math.random() - 0.5) * 30, vy: 90 + Math.random() * 40,
+      life: 0.3, max: 0.3, color: PAL.yellow, size: 3,
+    });
+  }
   let move = 0;
   if (keys['ArrowLeft'] || keys['KeyA']) move -= 1;
   if (keys['ArrowRight'] || keys['KeyD']) move += 1;
   if (move !== 0) {
-    player.x += move * CFG.playerSpeed * dt;
+    player.x += move * CFG.playerSpeed * nitro * dt;
   } else if (pointerX !== null) {
     // seguir al dedo con suavizado
-    player.x += (pointerX - player.x) * Math.min(1, CFG.touchFollow * dt);
+    player.x += (pointerX - player.x) * Math.min(1, CFG.touchFollow * nitro * dt);
   }
   player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
   if (player.invuln > 0) player.invuln -= dt;
 
-  // ---- Disparo automático ----
+  // temporizadores de power-ups
+  if (player.weaponT > 0) {
+    player.weaponT -= dt;
+    if (player.weaponT <= 0) player.weapon = 'normal';
+  }
+  if (player.nitroT > 0) player.nitroT -= dt;
+
+  // racha sin daño: +100 cada 15 segundos
+  S.noDmgT += dt;
+  if (S.noDmgT >= 15) {
+    S.noDmgT -= 15;
+    S.score += 100;
+    popups.push({ x: player.x, y: player.y - 40, text: 'RACHA +100', life: 1.1 });
+  }
+
+  // ---- Disparo automático (patrón según arma) ----
   player.fireT -= dt;
   if (player.fireT <= 0) {
     player.fireT = CFG.fireInterval;
-    bullets.push({ x: player.x, y: player.y - player.h / 2 - 4 });
-    S.shots++;
+    const py = player.y - player.h / 2 - 4;
+    const k = player.weapon;   // el color de la bala delata el arma
+    if (k === 'hop') {
+      bullets.push({ x: player.x - 9, y: py, kind: k }, { x: player.x + 9, y: py, kind: k });
+      S.shots += 2;
+    } else if (k === 'ipa') {
+      bullets.push({ x: player.x, y: py, kind: k },
+                   { x: player.x - 7, y: py, vx: -110, kind: k },
+                   { x: player.x + 7, y: py, vx: 110, kind: k });
+      S.shots += 3;
+    } else {
+      const tier = Math.min(Math.floor((S.wave - 1) / 2), sprBulletTiers.length - 1);
+      bullets.push({ x: player.x, y: py, tier });
+      S.shots++;
+    }
   }
-  for (const b of bullets) b.y -= CFG.bulletSpeed * dt;
-  bullets = bullets.filter(b => b.y > -20);
+  for (const b of bullets) {
+    b.y -= CFG.bulletSpeed * dt;
+    if (b.vx) b.x += b.vx * dt;
+  }
+  bullets = bullets.filter(b => b.y > -20 && b.x > -15 && b.x < W + 15);
 
   // ---- Formaciones ----
   const descend = CFG.waveDescend + (S.wave - 1) * 1.5;
@@ -624,19 +1070,154 @@ function update(dt) {
   }
   groups = groups.filter(g => !g.done);
 
+  // ---- El Rey Hueso emerge de la singularidad al segundo 40 ----
+  if (!boss.spawned && S.survived >= CFG.bossAt) {
+    boss.spawned = true;
+    boss.state = 'enter';
+    boss.t = 0;
+    boss.x = sing.x; boss.y = sing.y;
+    boss.hp = CFG.bossHp;
+    boss.phase = 0; boss.atkT = 1.2; boss.pat = false; boss.burstN = 0;
+    boss.swoop = -1; boss.swoopT = 6;   // picada de la mano
+    boss.puT = 2.5;                     // power-ups que caen durante la pelea
+    singularityFlare();
+  }
+  const bossBusy = boss.state === 'enter' || boss.state === 'fight';
+  // CAOS FINAL: los últimos 10 segundos con el jefe vivo
+  const chaos = boss.state === 'fight' && S.matchLeft <= 10;
+
+  // tinte rojizo del fondo: sube con el jefe, al máximo en el caos
+  const tensionTarget = bossBusy ? (chaos ? 1 : 0.55) : 0;
+  S.tension += (tensionTarget - S.tension) * Math.min(1, 2 * dt);
+
+  if (boss.state === 'enter') {
+    // sale del agujero negro creciendo hasta su posición de pelea
+    boss.t += dt;
+    const k = Math.min(1, boss.t / 1.4);
+    boss.x = sing.x + (W / 2 - sing.x) * k;
+    boss.y = sing.y + (125 - sing.y) * k;
+    boss.scale = 0.25 + 0.75 * k;
+    if (k >= 1) { boss.state = 'fight'; boss.scale = 1; }
+  } else if (boss.state === 'fight') {
+    if (boss.flash > 0) boss.flash -= dt;
+    const rage = 1 - boss.hp / CFG.bossHp;   // más furioso con menos vida
+
+    if (boss.swoop >= 0) {
+      // ¡picada! la mano baja a aplastarte y vuelve a subir
+      boss.swoop += dt / 1.7;
+      const k = Math.min(1, boss.swoop);
+      boss.y = 125 + Math.sin(Math.PI * k) * 330;
+      boss.x += (player.x - boss.x) * Math.min(1, 2.2 * dt);
+      if (boss.swoop >= 1) {
+        boss.swoop = -1;
+        boss.swoopT = (4.5 + Math.random() * 2.5 - rage * 1.5) * (chaos ? 0.5 : 1);
+      }
+    } else {
+      boss.swoopT -= dt;
+      if (boss.swoopT <= 0) boss.swoop = 0;
+      boss.phase += dt * (0.95 + rage * 0.8);
+      boss.x = W / 2 + Math.sin(boss.phase) * 165;
+      boss.y = 125 + Math.sin(S.time * 1.6) * 12;
+    }
+    const eyeX = boss.x, eyeY = boss.y + 12;   // el ojo de la palma
+
+    // solo dispara cuando no está en picada
+    if (boss.swoop < 0) {
+      boss.atkT -= dt;
+      if (boss.atkT <= 0) {
+        boss.pat = !boss.pat;
+        boss.atkT = (1.9 - rage * 0.8) * (chaos ? 0.55 : 1);
+        if (boss.pat) {
+          boss.burstN = chaos ? 6 : 4; boss.burstT = 0;   // ráfaga dirigida
+        } else {
+          // abanico de 7 orbes desde el ojo
+          const sp = 265 + rage * 80;
+          for (let i = -3; i <= 3; i++) {
+            const a = i * 0.22;
+            drops.push({ x: eyeX, y: eyeY, vx: Math.sin(a) * sp, vy: Math.cos(a) * sp, orb: true });
+          }
+        }
+      }
+      if (boss.burstN > 0) {
+        boss.burstT -= dt;
+        if (boss.burstT <= 0) {
+          boss.burstT = 0.14;
+          boss.burstN--;
+          const dx = player.x - eyeX, dy = player.y - eyeY;
+          const m = Math.hypot(dx, dy) || 1;
+          const sp = 300 + rage * 90;
+          drops.push({ x: eyeX, y: eyeY, vx: dx / m * sp, vy: dy / m * sp, orb: true });
+        }
+      }
+    }
+
+    // durante la pelea caen power-ups del cielo (no hay enemigos que los suelten)
+    boss.puT -= dt;
+    if (boss.puT <= 0) {
+      boss.puT = 4.5 + Math.random() * 2;
+      pickups.push({ x: 40 + Math.random() * (W - 80), y: -20, type: pickPowerType(), phase: 0 });
+    }
+  }
+
+  // ---- CAOS FINAL: lluvia de orbes, kamikazes y botellazos ----
+  if (chaos) {
+    if (!S.chaosAnnounced) {
+      S.chaosAnnounced = true;
+      popups.push({ x: W / 2, y: 300, text: '¡CAOS FINAL!', life: 1.6 });
+      popups.push({ x: W / 2, y: 330, text: '¡EL BORRACHO SE VOLVIÓ LOCO!', life: 1.6 });
+      S.shake = 10;
+    }
+    // el borracho entra (o regresa) para atacar
+    if (!drunk.active) {
+      drunk.active = true;
+      drunk.x = -30;
+      drunk.vx = 45;
+      drunk.y = 180 + Math.random() * 140;
+      drunk.phase = 0;
+      drunk.hicT = 0.5;
+    }
+    // lluvia de orbes desde arriba
+    S.rainT -= dt;
+    if (S.rainT <= 0) {
+      S.rainT = 0.5;
+      const rx = Math.random() * W;
+      const vx = Math.max(-120, Math.min(120, (player.x - rx) * 0.3));
+      drops.push({ x: rx, y: -12, vx, vy: 265, orb: true });
+    }
+    // huesos kamikaze
+    S.kamiT -= dt;
+    if (S.kamiT <= 0) {
+      S.kamiT = 1.3;
+      divers.push({ x: 30 + Math.random() * (W - 60), y: -20, vx: 0, vy: 130, type: 'bone', hp: 1, flash: 0 });
+    }
+    // el borracho lanza botellazos
+    S.btlT -= dt;
+    if (S.btlT <= 0 && drunk.active) {
+      S.btlT = 1.2;
+      const dx = player.x - drunk.x, dy = player.y - drunk.y;
+      const m = Math.hypot(dx, dy) || 1;
+      drops.push({ x: drunk.x, y: drunk.y, vx: dx / m * 255, vy: dy / m * 255, btl: true });
+    }
+  }
+
   // ---- Próxima oleada: llega cada cierto tiempo, se encima con la anterior ----
-  S.nextWaveT -= dt;
-  if (groups.length === 0) S.nextWaveT = Math.min(S.nextWaveT, CFG.waveDelay);
-  if (S.nextWaveT <= 0) {
-    spawnWave();
-    S.nextWaveT = Math.max(5.5, CFG.waveInterval - S.wave * 0.6);
+  // (en pausa mientras el Rey Hueso está en escena)
+  if (!bossBusy) {
+    S.nextWaveT -= dt;
+    if (groups.length === 0) S.nextWaveT = Math.min(S.nextWaveT, CFG.waveDelay);
+    if (S.nextWaveT <= 0) {
+      spawnWave();
+      S.nextWaveT = Math.max(5.5, CFG.waveInterval - S.wave * 0.6);
+    }
   }
 
   // ---- Ataques en picada ----
-  S.diveT -= dt;
-  if (S.diveT <= 0) {
-    launchDiver();
-    S.diveT = Math.max(1.3, CFG.diveInterval - (S.wave - 1) * 0.25);
+  if (!bossBusy) {
+    S.diveT -= dt;
+    if (S.diveT <= 0) {
+      launchDiver();
+      S.diveT = Math.max(1.3, CFG.diveInterval - (S.wave - 1) * 0.25);
+    }
   }
   const diveMax = CFG.diveSpeed + (S.wave - 1) * 15;
   for (const d of divers) {
@@ -650,7 +1231,7 @@ function update(dt) {
   divers = divers.filter(d => d.y < H + 40 && !d.dead);
 
   // ---- Cervezas industriales (desde la oleada 2) ----
-  if (S.wave >= 2) {
+  if (S.wave >= 2 && !bossBusy) {
     S.beerT -= dt;
     if (S.beerT <= 0) {
       launchBeer();
@@ -669,10 +1250,31 @@ function update(dt) {
     dr.x += dr.vx * dt;
     dr.y += dr.vy * dt;
   }
-  drops = drops.filter(dr => dr.y < H + 15 && !dr.dead);
+  drops = drops.filter(dr => dr.y < H + 15 && dr.x > -15 && dr.x < W + 15 && !dr.dead);
+
+  // ---- Power-ups cayendo ----
+  for (const pu of pickups) {
+    pu.y += 115 * dt;
+    pu.phase += dt * 3;
+    if (Math.abs(pu.x - player.x) < 30 && Math.abs(pu.y - player.y) < 28) {
+      pu.dead = true;
+      applyPower(pu.type);
+    }
+  }
+  pickups = pickups.filter(pu => pu.y < H + 25 && !pu.dead);
 
   // ---- Colisiones bala → enemigo ----
   for (const b of bullets) {
+    // el Rey Hueso primero
+    if (boss.state === 'fight' &&
+        Math.abs(b.x - boss.x) < 30 && Math.abs(b.y - boss.y) < 40) {
+      b.dead = true;
+      S.hits++;
+      boss.hp--;
+      boss.flash = 0.08;
+      if (boss.hp <= 0) defeatBoss();
+      continue;
+    }
     // enemigos sueltos primero (van al frente)
     for (const d of divers) {
       if (d.dead) continue;
@@ -756,6 +1358,11 @@ function update(dt) {
         break;
       }
     }
+    // el cuerpo del Rey Hueso
+    if (!hit && boss.state === 'fight' &&
+        Math.abs(boss.x - player.x) < 44 && Math.abs(boss.y - player.y) < 52) {
+      hit = true;
+    }
     // formación
     if (!hit) {
       outer:
@@ -778,6 +1385,10 @@ function update(dt) {
   }
 
   // ---- Partículas y textos flotantes ----
+  updateFx(dt);
+}
+
+function updateFx(dt) {
   for (const pa of particles) {
     pa.x += pa.vx * dt; pa.y += pa.vy * dt;
     pa.vy += 60 * dt;
@@ -788,7 +1399,21 @@ function update(dt) {
   popups = popups.filter(p => p.life > 0);
 }
 
-function killEnemy(type, x, y) {
+// El tiempo se acabó con el Rey Hueso vivo: todo explota
+function startCataclysm() {
+  S.state = 'boom';
+  S.boomT = 2.2;
+  S.boomSpawn = 0;
+  S.cataclysmed = true;
+  bullets = []; drops = []; pickups = [];
+  explode(player.x, player.y, PAL.amberHi, 40);
+  explode(player.x, player.y, PAL.red, 30);
+  popups.push({ x: W / 2, y: 300, text: '¡NOOO! ¡EL LOTE!', life: 2 });
+  singularityFlare();
+  S.shake = 18;
+}
+
+function killEnemy(type, x, y, fromBlast) {
   const t = ETYPES[type];
   S.kills++;
   addScore(t.pts, x, y);
@@ -797,6 +1422,77 @@ function killEnemy(type, x, y) {
             : type === 'skull' ? PAL.purple
             : PAL.bone;
   explode(x, y, col, 14);
+  // a veces suelta un power-up (no en cadena por el barril)
+  if (!fromBlast && Math.random() < CFG.powerDropChance) {
+    pickups.push({ x, y, type: pickPowerType(), phase: 0 });
+  }
+}
+
+function pickPowerType() {
+  const r = Math.random();
+  if (r < 0.26) return 'hop';
+  if (r < 0.52) return 'ipa';
+  if (r < 0.72) return 'nitro';
+  if (r < 0.87) return 'barrel';
+  return 'life';   // 13%: el corazón ya no es tan raro
+}
+
+function applyPower(type) {
+  const msgs = {
+    hop: '¡HOP SHOT!', ipa: '¡TRIPLE IPA!', barrel: '¡BARRIL EXPLOSIVO!',
+    nitro: '¡NITRO!', life: '+1 PINTA',
+  };
+  popups.push({ x: player.x, y: player.y - 44, text: msgs[type], life: 1.2 });
+  if (type === 'hop' || type === 'ipa') {
+    player.weapon = type;
+    player.weaponT = CFG.powerTime;
+  } else if (type === 'nitro') {
+    player.nitroT = CFG.powerTime;
+  } else if (type === 'life') {
+    S.lives = Math.min(4, S.lives + 1);
+  } else if (type === 'barrel') {
+    barrelBlast();
+  }
+}
+
+// El barril explosivo: limpia la pantalla de enemigos
+function barrelBlast() {
+  S.flashT = 0.18;
+  S.shake = 12;
+  for (const g of groups) {
+    for (const c of g.cells) {
+      if (!c.alive) continue;
+      const p = enemyPos(g, c);
+      if (p.y > -20) { c.alive = false; killEnemy(c.type, p.x, p.y, true); }
+    }
+  }
+  for (const d of divers) {
+    if (!d.dead) { d.dead = true; killEnemy(d.type, d.x, d.y, true); }
+  }
+  for (const be of beers) {
+    if (!be.dead) { be.dead = true; killEnemy('beer', beerX(be), be.y, true); }
+  }
+  for (const dr of drops) dr.dead = true;   // borra proyectiles enemigos
+  if (boss.state === 'fight') {
+    boss.hp -= 6;
+    boss.flash = 0.15;
+    if (boss.hp <= 0) defeatBoss();
+  }
+}
+
+function defeatBoss() {
+  boss.state = 'dead';
+  S.kills++;
+  S.bossKilled = true;
+  S.score += 750;   // 500 del jefe + 250 de bonus
+  popups.push({ x: boss.x, y: boss.y, text: '+750', life: 1.4 });
+  popups.push({ x: W / 2, y: boss.y - 55, text: '¡REY HUESO DERROTADO!', life: 1.8 });
+  explode(boss.x, boss.y, PAL.purple, 26);
+  explode(boss.x, boss.y, '#5a7186', 26);
+  explode(boss.x, boss.y, PAL.amberHi, 20);
+  singularityFlare();
+  S.shake = 14;
+  S.nextWaveT = 1.5;   // las oleadas regresan pronto
 }
 
 function addScore(pts, x, y) {
@@ -820,6 +1516,7 @@ function explode(x, y, color, n) {
 function hitPlayer() {
   S.lives--;
   player.invuln = CFG.invulnTime;
+  S.noDmgT = 0;   // se corta la racha sin daño
   S.shake = 8;
   explode(player.x, player.y, PAL.amberHi, 20);
   if (S.lives <= 0) endGame(false);
@@ -832,6 +1529,95 @@ function drawEnemySprite(type, x, y, flash) {
   const t = ETYPES[type];
   const spr = flash > 0 ? t.flash : t.spr;
   ctx.drawImage(spr, (x - t.spr.width / 2) | 0, (y - t.spr.height / 2) | 0);
+}
+
+// Círculo relleno en filas de 2px (look pixelado)
+function fillPixelCircle(cx, cy, r, color) {
+  ctx.fillStyle = color;
+  for (let y = -r; y <= r; y += 2) {
+    const half = Math.floor(Math.sqrt(Math.max(0, r * r - y * y)));
+    if (half > 0) ctx.fillRect((cx - half) & ~1, (cy + y) & ~1, half * 2, 2);
+  }
+}
+
+function drawSingularity() {
+  const cx = sing.x, cy = sing.y, flare = sing.flare;
+
+  // brazos espirales del disco de acreción (elipse aplanada)
+  for (let arm = 0; arm < 2; arm++) {
+    for (let r = 12; r <= 34; r += 1.6) {
+      const a = sing.angle + r * 0.22 + arm * Math.PI;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r * 0.45;
+      ctx.globalAlpha = (1 - (r - 12) / 26) * 0.75 + 0.15;
+      ctx.fillStyle = r < 18 ? PAL.amberHi : r < 26 ? PAL.amber : PAL.teal;
+      ctx.fillRect((x | 0) & ~1, (y | 0) & ~1, 2, 2);
+    }
+  }
+
+  // materia cayendo en espiral
+  ctx.globalAlpha = 0.8;
+  ctx.fillStyle = PAL.amberHi;
+  for (const de of sing.debris) {
+    const x = cx + Math.cos(de.a) * de.r;
+    const y = cy + Math.sin(de.a) * de.r * 0.5;
+    ctx.fillRect((x | 0) & ~1, (y | 0) & ~1, 2, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // horizonte de eventos: halo púrpura pulsante + núcleo negro
+  const pr = Math.round(8 + Math.sin(S.time * 2.2) * 1.5 + flare * 22);
+  fillPixelCircle(cx, cy, pr + 3, PAL.purple);
+  fillPixelCircle(cx, cy, pr, '#000000');
+
+  // erupción (cuando emerge el Rey Hueso): onda expansiva pixelada
+  if (flare > 0) {
+    const rr = (1 - flare) * 280 + 24;
+    for (let a = 0; a < Math.PI * 2; a += 0.09) {
+      const x = cx + Math.cos(a) * rr;
+      const y = cy + Math.sin(a) * rr * 0.8;
+      ctx.globalAlpha = flare * 0.9;
+      ctx.fillStyle = PAL.amberHi;
+      ctx.fillRect((x | 0) & ~1, (y | 0) & ~1, 3, 3);
+      const x2 = cx + Math.cos(a + 0.05) * rr * 0.72;
+      const y2 = cy + Math.sin(a + 0.05) * rr * 0.72 * 0.8;
+      ctx.globalAlpha = flare * 0.5;
+      ctx.fillStyle = PAL.purple;
+      ctx.fillRect((x2 | 0) & ~1, (y2 | 0) & ~1, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawParallax() {
+  // nebulosas al fondo
+  ctx.globalAlpha = 0.5;
+  for (const nb of nebulas) ctx.drawImage(nb.spr, nb.x | 0, nb.y | 0);
+  ctx.globalAlpha = 1;
+
+  drawSingularity();
+
+  // capa lejana: elementos de la etiqueta (máscara, flores, hongos)
+  ctx.globalAlpha = 0.45;
+  for (const it of bgFar) {
+    const sway = Math.sin(it.phase * 0.6) * 4;
+    ctx.drawImage(it.spr, (it.x + sway - it.spr.width / 2) | 0, it.y | 0);
+  }
+  // capa media: insumos y equipo de la cervecería
+  ctx.globalAlpha = 0.72;
+  for (const it of bgMid) {
+    const sway = Math.sin(it.phase * 0.8) * 6;
+    ctx.drawImage(it.spr, (it.x + sway - it.spr.width / 2) | 0, it.y | 0);
+  }
+  ctx.globalAlpha = 1;
+
+  // el borracho flotante
+  if (drunk.active) {
+    const bobY = Math.sin(drunk.phase * 1.4) * 6;
+    ctx.globalAlpha = 0.9;
+    ctx.drawImage(sprDrunk, (drunk.x - sprDrunk.width / 2) | 0, (drunk.y + bobY) | 0);
+    ctx.globalAlpha = 1;
+  }
 }
 
 function draw() {
@@ -850,6 +1636,8 @@ function draw() {
   ctx.fillStyle = PAL.teal;
   for (const st of stars) ctx.fillRect(st.x | 0, st.y | 0, st.s, st.s);
 
+  drawParallax();
+
   for (const b of bubbles) {
     const bx = b.x + Math.sin(b.drift) * 6;
     ctx.strokeStyle = 'rgba(44,138,168,0.35)';
@@ -857,6 +1645,12 @@ function draw() {
     ctx.beginPath();
     ctx.arc(bx | 0, b.y | 0, b.r, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  // tinte rojizo de tensión (Rey Hueso en escena / caos final)
+  if (S.tension > 0.01) {
+    ctx.fillStyle = 'rgba(200,40,30,' + (S.tension * 0.18).toFixed(3) + ')';
+    ctx.fillRect(-10, -10, W + 20, H + 20);
   }
 
   if (S.state === 'title') { drawTitle(); ctx.restore(); return; }
@@ -882,18 +1676,39 @@ function draw() {
     drawEnemySprite('beer', beerX(be), be.y, be.flash);
   }
 
-  // ---- Balas del jugador ----
+  // ---- El Rey Hueso ----
+  if (boss.state === 'enter' || boss.state === 'fight') {
+    const spr = boss.flash > 0 ? sprBossFlash : sprBoss;
+    const s = boss.scale || 1;
+    const bw = sprBoss.width * s, bh = sprBoss.height * s;
+    ctx.drawImage(spr, (boss.x - bw / 2) | 0, (boss.y - bh / 2) | 0, bw | 0, bh | 0);
+  }
+
+  // ---- Power-ups cayendo ----
+  for (const pu of pickups) {
+    const px = pu.x + Math.sin(pu.phase) * 4;
+    fillPixelCircle(px | 0, pu.y | 0, 14, PAL.teal);
+    fillPixelCircle(px | 0, pu.y | 0, 11, '#0a2a36');
+    const ico = PICKUP_ICONS[pu.type];
+    ctx.drawImage(ico, (px - ico.width / 2) | 0, (pu.y - ico.height / 2) | 0);
+  }
+
+  // ---- Balas del jugador (el color indica arma y nivel de oleada) ----
   for (const b of bullets) {
-    ctx.drawImage(sprBullet, (b.x - sprBullet.width / 2) | 0, (b.y - sprBullet.height / 2) | 0);
+    const spr = b.kind === 'hop' ? sprBulletHop
+              : b.kind === 'ipa' ? sprBulletIpa
+              : sprBulletTiers[b.tier || 0];
+    ctx.drawImage(spr, (b.x - spr.width / 2) | 0, (b.y - spr.height / 2) | 0);
   }
 
-  // ---- Proyectiles enemigos ----
+  // ---- Proyectiles enemigos (gotas, orbes del jefe, botellazos) ----
   for (const dr of drops) {
-    ctx.drawImage(sprDrop, (dr.x - sprDrop.width / 2) | 0, (dr.y - sprDrop.height / 2) | 0);
+    const spr = dr.orb ? sprOrb : dr.btl ? sprBottleBg : sprDrop;
+    ctx.drawImage(spr, (dr.x - spr.width / 2) | 0, (dr.y - spr.height / 2) | 0);
   }
 
-  // ---- Jugador (parpadea si es invulnerable) ----
-  if (player.invuln <= 0 || Math.floor(S.time * 12) % 2 === 0) {
+  // ---- Jugador (parpadea si es invulnerable; explotó en el cataclismo) ----
+  if (S.state !== 'boom' && (player.invuln <= 0 || Math.floor(S.time * 12) % 2 === 0)) {
     ctx.drawImage(sprPlayer, (player.x - sprPlayer.width / 2) | 0, (player.y - sprPlayer.height / 2) | 0);
   }
 
@@ -912,6 +1727,14 @@ function draw() {
   }
   ctx.globalAlpha = 1;
 
+  // destello blanco del barril explosivo
+  if (S.flashT > 0) {
+    ctx.globalAlpha = Math.min(1, S.flashT * 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+
   drawHUD();
   if (S.state === 'end') drawEnd();
   ctx.restore();
@@ -929,6 +1752,35 @@ function drawHUD() {
   // pintas a la derecha
   for (let i = 0; i < S.lives; i++) {
     ctx.drawImage(sprLife, W - 28 - i * 24, 10);
+  }
+
+  // barra de vida del Rey Hueso
+  if (boss.state === 'fight') {
+    const bw = 220, bx = W / 2 - bw / 2, by = 56;
+    drawText('REY HUESO', W / 2, by - 10, 1, PAL.redHi, 'center');
+    ctx.fillStyle = 'rgba(4,20,28,0.7)';
+    ctx.fillRect(bx - 2, by - 2, bw + 4, 10);
+    ctx.fillStyle = PAL.red;
+    ctx.fillRect(bx, by, Math.max(0, bw * boss.hp / CFG.bossHp), 6);
+  }
+
+  // power-ups activos (abajo a la izquierda, con barra de tiempo)
+  let py = H - 34;
+  if (player.weaponT > 0) {
+    const ico = player.weapon === 'hop' ? icoHop : icoFire;
+    ctx.drawImage(ico, 12, py);
+    ctx.fillStyle = 'rgba(4,20,28,0.7)';
+    ctx.fillRect(38, py + 8, 44, 6);
+    ctx.fillStyle = PAL.amberHi;
+    ctx.fillRect(38, py + 8, 44 * player.weaponT / CFG.powerTime, 6);
+    py -= 28;
+  }
+  if (player.nitroT > 0) {
+    ctx.drawImage(icoBolt, 12, py);
+    ctx.fillStyle = 'rgba(4,20,28,0.7)';
+    ctx.fillRect(38, py + 8, 44, 6);
+    ctx.fillStyle = PAL.yellow;
+    ctx.fillRect(38, py + 8, 44 * player.nitroT / CFG.powerTime, 6);
   }
 }
 
@@ -971,6 +1823,9 @@ function drawEnd() {
 
   if (S.won) {
     drawText('¡LOTE DEFENDIDO!', W / 2, 210, 4, PAL.amberHi, 'center');
+  } else if (S.cataclysmed) {
+    drawText('EL REY HUESO GANÓ', W / 2, 210, 4, PAL.red, 'center');
+    drawText('EL TIEMPO SE ACABÓ Y TODO EXPLOTÓ...', W / 2, 245, 2, PAL.tealSoft, 'center');
   } else {
     drawText('SE PERDIÓ EL LOTE', W / 2, 210, 4, PAL.red, 'center');
     drawText('LAS CERVEZAS SIN SABOR GANARON ESTA VEZ...', W / 2, 245, 2, PAL.tealSoft, 'center');
@@ -978,6 +1833,9 @@ function drawEnd() {
 
   drawText(String(S.score), W / 2, 300, 7, PAL.foam, 'center');
   drawText('PUNTOS', W / 2, 350, 2, PAL.tealSoft, 'center');
+
+  if (S.won) drawText('BONUS SUPERVIVENCIA +500', W / 2, 372, 2, PAL.amberHi, 'center');
+  if (S.bossKilled) drawText('★ REY HUESO DERROTADO +750 ★', W / 2, S.won ? 390 : 372, 2, PAL.amberHi, 'center');
 
   const acc = S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0;
   drawText('ENEMIGOS DERROTADOS: ' + S.kills, W / 2, 410, 2, PAL.foam, 'center');
