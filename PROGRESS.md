@@ -26,6 +26,9 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 - REGLA: solo ganas si derrotas al Rey Hueso; si el tiempo acaba con él vivo → cataclismo (todo explota, "EL REY HUESO GANÓ").
 - Balas cambian de color: por oleada (teal→cian→verde→amarillo→ámbar→rojo) y por arma (verde=hop, fuego=IPA).
 - Bonos: +100 por 15s sin daño (racha), +500 por sobrevivir (solo al ganar).
+- Ajustes post-prueba: jefe a 42 HP (calibrado con el usuario), al vencerlo la onda barre a los enemigos restantes y ya no aparece nada más.
+- 5 estilos de cerveza aleatorios por partida para el tarro (IPA/Pilsner/Red/Brown/Stout, aviso "HOY SIRVES: X", iconos de vida a juego); `EVENT_MUG` fija el estilo durante eventos (Etapa 6).
+- Troleo del borracho: 30% de las victorias, botellazo al letrero a los 3s → "¡LOTE NO DEFENDIDO! EL BORRACHO TENÍA OTROS PLANES JAJA" (cosmético, los puntos cuentan).
 
 ### Siguiente paso: Etapa 4 — Presentación completa (sin backend aún)
 

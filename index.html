@@ -84,7 +84,7 @@ const CFG = {
   canFireBase: 3.4,       // cadencia base de disparo de las latas (s)
   dropSpeed: 235,         // velocidad del proyectil enemigo (px/s)
   bossAt: 40,             // segundo en que emerge el Rey Hueso
-  bossHp: 52,             // vida del jefe
+  bossHp: 42,             // vida del jefe
   powerDropChance: 0.11,  // probabilidad de que un enemigo suelte power-up
   powerTime: 8,           // duración de los power-ups temporales (s)
 };
@@ -223,8 +223,19 @@ function makeFlash(spr) {
   return c;
 }
 
-// Tarro de cerveza (jugador): espuma desbordando, cuerpo ámbar, asa
-const sprPlayer = makeSprite([
+// Tarro de cerveza (jugador): espuma desbordando, asa, y el estilo
+// de la casa cambia cada partida (IPA, pilsner, red ale, brown, stout)
+const MUG_STYLES = [
+  { name: 'IPA',       A: '#d9971e', L: '#f2b53a', D: '#a06d10', W: PAL.foam },
+  { name: 'PILSNER',   A: '#e8c84a', L: '#f5e07a', D: '#b09020', W: PAL.foam },
+  { name: 'RED ALE',   A: '#b5502a', L: '#d97a4a', D: '#7d3318', W: PAL.foam },
+  { name: 'BROWN ALE', A: '#7a4e2a', L: '#9c6b3e', D: '#4e2f16', W: PAL.foam },
+  { name: 'STOUT',     A: '#2e2620', L: '#4a3c30', D: '#17120e', W: '#e8dcc0' },
+];
+// En eventos especiales (Etapa 6) se fija un estilo: EVENT_MUG = índice
+let EVENT_MUG = null;
+
+const sprPlayers = MUG_STYLES.map(st => makeSprite([
   '..WW.WWW.WW...',
   '.WWWWWWWWWW...',
   '.WWWWWWWWWWW..',
@@ -237,7 +248,7 @@ const sprPlayer = makeSprite([
   '.ALAAAAAAAD...',
   '.AAAAAAAAAA...',
   '..DDDDDDDD....',
-], { W: PAL.foam, A: PAL.amber, L: PAL.amberHi, D: PAL.amberLo });
+], { W: st.W, A: st.A, L: st.L, D: st.D }));
 
 // Hueso invasor (enemigo básico) con ojos rojos malignos
 const sprBone = makeSprite([
@@ -321,15 +332,15 @@ const sprDrop = makeSprite([
   '.R.',
 ], { R: PAL.red });
 
-// Pinta mini (icono de vida en el HUD)
-const sprLife = makeSprite([
+// Pinta mini (icono de vida en el HUD, a juego con el estilo del tarro)
+const sprLifes = MUG_STYLES.map(st => makeSprite([
   '.WWW..',
   'AAAA.D',
   'ALAA.D',
   'ALAA.D',
   'AAAA.D',
   '.DDD..',
-], { W: PAL.foam, A: PAL.amber, L: PAL.amberHi, D: PAL.amberLo });
+], { W: st.W, A: st.A, L: st.L, D: st.D }));
 
 // ============================================================
 //  Sprites del fondo (elementos de la etiqueta y la cervecería,
@@ -593,6 +604,7 @@ const S = {
   rainT: 0, kamiT: 0, btlT: 0,   // spawners del caos
   boomT: 0, boomSpawn: 0,        // cataclismo si el jefe sobrevive
   cataclysmed: false,
+  troll: false, trollT: 0, trollHit: false,   // el borracho trolea tu victoria
   endCooldown: 0,
   best: Number(localStorage.getItem('sh_best') || 0),
 };
@@ -601,6 +613,7 @@ const player = {
   x: W / 2, y: H - 74, w: 34, h: 30, fireT: 0, invuln: 0,
   weapon: 'normal', weaponT: 0,   // hop = doble, ipa = triple
   nitroT: 0,
+  styleIdx: 0,                    // estilo de cerveza de la partida
 };
 
 // El Rey Hueso (estado del jefe)
@@ -748,17 +761,25 @@ function startGame() {
   player.invuln = 0;
   player.weapon = 'normal'; player.weaponT = 0;
   player.nitroT = 0;
+  // estilo de la casa: fijo en eventos, aleatorio el resto del año
+  player.styleIdx = EVENT_MUG !== null ? EVENT_MUG
+                  : Math.floor(Math.random() * MUG_STYLES.length);
   boss.spawned = false; boss.state = 'off'; boss.flash = 0;
   bullets = []; groups = []; divers = []; beers = []; drops = [];
   pickups = []; particles = []; popups = [];
   spawnWave();
   S.nextWaveT = CFG.waveInterval;
+  popups.push({ x: W / 2, y: H - 130, text: 'HOY SIRVES: ' + MUG_STYLES[player.styleIdx].name, life: 1.6 });
 }
 
 function endGame(won) {
   S.state = 'end';
   S.won = won;
   if (won) S.score += 500;   // bonus por sobrevivir el minuto completo
+  // a veces el borracho trolea tu victoria (solo cosmético, jaja)
+  S.troll = won && Math.random() < 0.3;
+  S.trollT = 0;
+  S.trollHit = false;
   S.endCooldown = 1.0;   // evita reiniciar por accidente con el mismo toque
   if (S.score > S.best) {
     S.best = S.score;
@@ -945,6 +966,23 @@ function update(dt) {
     return;
   }
 
+  // ---- Pantalla final: el borracho puede trolear la victoria ----
+  if (S.state === 'end') {
+    updateFx(dt);
+    if (S.troll) {
+      S.trollT += dt;
+      if (!S.trollHit && S.trollT >= 3.0) {
+        S.trollHit = true;   // ¡PUM! botellazo al letrero
+        explode(W / 2, 225, PAL.amberHi, 24);
+        explode(W / 2, 225, '#7a4e14', 18);
+        S.shake = 12;
+        S.flashT = 0.1;
+        popups.push({ x: W / 2, y: 190, text: '¡PUM!', life: 1.2 });
+      }
+    }
+    return;
+  }
+
   if (S.state !== 'playing') return;
 
   // ---- Reloj de partida ----
@@ -1083,6 +1121,8 @@ function update(dt) {
     singularityFlare();
   }
   const bossBusy = boss.state === 'enter' || boss.state === 'fight';
+  // tras vencer al jefe ya no aparece ningún enemigo más
+  const noSpawns = bossBusy || S.bossKilled;
   // CAOS FINAL: los últimos 10 segundos con el jefe vivo
   const chaos = boss.state === 'fight' && S.matchLeft <= 10;
 
@@ -1154,7 +1194,7 @@ function update(dt) {
     // durante la pelea caen power-ups del cielo (no hay enemigos que los suelten)
     boss.puT -= dt;
     if (boss.puT <= 0) {
-      boss.puT = 4.5 + Math.random() * 2;
+      boss.puT = 3.5 + Math.random() * 2;
       pickups.push({ x: 40 + Math.random() * (W - 80), y: -20, type: pickPowerType(), phase: 0 });
     }
   }
@@ -1201,8 +1241,8 @@ function update(dt) {
   }
 
   // ---- Próxima oleada: llega cada cierto tiempo, se encima con la anterior ----
-  // (en pausa mientras el Rey Hueso está en escena)
-  if (!bossBusy) {
+  // (en pausa con el Rey Hueso en escena; nunca más si ya lo venciste)
+  if (!noSpawns) {
     S.nextWaveT -= dt;
     if (groups.length === 0) S.nextWaveT = Math.min(S.nextWaveT, CFG.waveDelay);
     if (S.nextWaveT <= 0) {
@@ -1212,7 +1252,7 @@ function update(dt) {
   }
 
   // ---- Ataques en picada ----
-  if (!bossBusy) {
+  if (!noSpawns) {
     S.diveT -= dt;
     if (S.diveT <= 0) {
       launchDiver();
@@ -1231,7 +1271,7 @@ function update(dt) {
   divers = divers.filter(d => d.y < H + 40 && !d.dead);
 
   // ---- Cervezas industriales (desde la oleada 2) ----
-  if (S.wave >= 2 && !bossBusy) {
+  if (S.wave >= 2 && !noSpawns) {
     S.beerT -= dt;
     if (S.beerT <= 0) {
       launchBeer();
@@ -1492,7 +1532,23 @@ function defeatBoss() {
   explode(boss.x, boss.y, PAL.amberHi, 20);
   singularityFlare();
   S.shake = 14;
-  S.nextWaveT = 1.5;   // las oleadas regresan pronto
+
+  // la onda expansiva barre a todo enemigo restante: victoria limpia,
+  // ya no aparece nada más hasta que termine el reloj
+  for (const g of groups) {
+    for (const c of g.cells) {
+      if (!c.alive) continue;
+      const p = enemyPos(g, c);
+      if (p.y > -20) { c.alive = false; killEnemy(c.type, p.x, p.y, true); }
+    }
+  }
+  for (const d of divers) {
+    if (!d.dead) { d.dead = true; killEnemy(d.type, d.x, d.y, true); }
+  }
+  for (const be of beers) {
+    if (!be.dead) { be.dead = true; killEnemy('beer', beerX(be), be.y, true); }
+  }
+  for (const dr of drops) dr.dead = true;
 }
 
 function addScore(pts, x, y) {
@@ -1709,7 +1765,8 @@ function draw() {
 
   // ---- Jugador (parpadea si es invulnerable; explotó en el cataclismo) ----
   if (S.state !== 'boom' && (player.invuln <= 0 || Math.floor(S.time * 12) % 2 === 0)) {
-    ctx.drawImage(sprPlayer, (player.x - sprPlayer.width / 2) | 0, (player.y - sprPlayer.height / 2) | 0);
+    const sprP = sprPlayers[player.styleIdx];
+    ctx.drawImage(sprP, (player.x - sprP.width / 2) | 0, (player.y - sprP.height / 2) | 0);
   }
 
   // ---- Partículas ----
@@ -1751,7 +1808,7 @@ function drawHUD() {
 
   // pintas a la derecha
   for (let i = 0; i < S.lives; i++) {
-    ctx.drawImage(sprLife, W - 28 - i * 24, 10);
+    ctx.drawImage(sprLifes[player.styleIdx], W - 28 - i * 24, 10);
   }
 
   // barra de vida del Rey Hueso
@@ -1822,7 +1879,13 @@ function drawEnd() {
   ctx.fillRect(0, 0, W, H);
 
   if (S.won) {
-    drawText('¡LOTE DEFENDIDO!', W / 2, 210, 4, PAL.amberHi, 'center');
+    if (S.trollHit) {
+      drawText('¡LOTE NO DEFENDIDO!', W / 2, 210, 4, PAL.red, 'center');
+      drawText('EL BORRACHO TENÍA OTROS PLANES JAJA', W / 2, 245, 2, PAL.tealSoft, 'center');
+      drawText('(TRANQUILO: TUS PUNTOS SÍ CUENTAN)', W / 2, 263, 1, PAL.teal, 'center');
+    } else {
+      drawText('¡LOTE DEFENDIDO!', W / 2, 210, 4, PAL.amberHi, 'center');
+    }
   } else if (S.cataclysmed) {
     drawText('EL REY HUESO GANÓ', W / 2, 210, 4, PAL.red, 'center');
     drawText('EL TIEMPO SE ACABÓ Y TODO EXPLOTÓ...', W / 2, 245, 2, PAL.tealSoft, 'center');
@@ -1850,6 +1913,37 @@ function drawEnd() {
 
   if (S.endCooldown <= 0 && Math.floor(S.time * 2) % 2 === 0) {
     drawText('TOCA PARA REINTENTAR', W / 2, 560, 3, PAL.amberHi, 'center');
+  }
+
+  // ---- El borracho trolea la victoria por encima de todo ----
+  if (S.troll) {
+    const t = S.trollT;
+    // entra flotando desde la derecha
+    const k = Math.min(1, Math.max(0, (t - 0.8) / 1.8));
+    const dX = (W + 40) + (W / 2 + 130 - (W + 40)) * k;
+    const dY = 285 + Math.sin(S.time * 2) * 8;
+    ctx.drawImage(sprDrunk, (dX - sprDrunk.width / 2) | 0, (dY - sprDrunk.height / 2) | 0);
+
+    // la botella vuela hacia el letrero
+    if (t >= 2.55 && !S.trollHit) {
+      const bk = Math.min(1, (t - 2.55) / 0.45);
+      const bX = dX - 10 + (W / 2 - (dX - 10)) * bk;
+      const bY = dY + (225 - dY) * bk;
+      ctx.drawImage(sprBottleBg, (bX - sprBottleBg.width / 2) | 0, (bY - sprBottleBg.height / 2) | 0);
+    }
+
+    // partículas y textos del ¡PUM! visibles sobre el panel oscuro
+    for (const pa of particles) {
+      ctx.globalAlpha = Math.max(0, pa.life / pa.max);
+      ctx.fillStyle = pa.color;
+      ctx.fillRect(pa.x | 0, pa.y | 0, pa.size, pa.size);
+    }
+    ctx.globalAlpha = 1;
+    for (const po of popups) {
+      ctx.globalAlpha = Math.min(1, po.life * 2);
+      drawText(po.text, po.x, po.y, 3, PAL.amberHi, 'center');
+    }
+    ctx.globalAlpha = 1;
   }
 }
 
