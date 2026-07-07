@@ -21,10 +21,62 @@
     image-rendering: crisp-edges;
     background: #071e29;
   }
+  /* Overlay de captura de nombre (Salón de la Fama) */
+  #nameOverlay {
+    display: none;
+    position: fixed; inset: 0;
+    align-items: center; justify-content: center;
+    background: rgba(4,20,28,0.78);
+    z-index: 10;
+    font-family: 'Courier New', monospace;
+  }
+  #namePanel {
+    background: #0d3b4f;
+    border: 3px solid #d9971e;
+    padding: 22px 26px;
+    text-align: center;
+    color: #f4efe6;
+    max-width: 320px;
+  }
+  #nameTitle { font-weight: bold; font-size: 15px; letter-spacing: 1px; margin-bottom: 14px; }
+  #nameInput {
+    background: #04141c;
+    border: 2px solid #1c6b85;
+    color: #f2b53a;
+    font: bold 22px 'Courier New', monospace;
+    text-transform: uppercase;
+    text-align: center;
+    width: 210px;
+    padding: 8px;
+    outline: none;
+  }
+  #nameInput:focus { border-color: #d9971e; }
+  #nameMsg { color: #e04a3a; font-size: 12px; font-weight: bold; min-height: 16px; margin: 8px 0 4px; }
+  #nameBtns button {
+    font: bold 14px 'Courier New', monospace;
+    border: 0;
+    padding: 10px 18px;
+    margin: 4px 6px;
+    cursor: pointer;
+    letter-spacing: 1px;
+  }
+  #btnSave { background: #d9971e; color: #04141c; }
+  #btnSkip { background: #1c6b85; color: #f4efe6; }
 </style>
 </head>
 <body>
 <canvas id="game" width="480" height="720"></canvas>
+<div id="nameOverlay">
+  <div id="namePanel">
+    <div id="nameTitle">¿ENTRAR AL SALÓN DE LA FAMA?</div>
+    <input id="nameInput" maxlength="10" autocomplete="off" spellcheck="false" placeholder="TU NOMBRE">
+    <div id="nameMsg">&nbsp;</div>
+    <div id="nameBtns">
+      <button id="btnSave">GUARDAR</button>
+      <button id="btnSkip">SALTAR</button>
+    </div>
+  </div>
+</div>
 <script>
 'use strict';
 
@@ -87,7 +139,198 @@ const CFG = {
   bossHp: 42,             // vida del jefe
   powerDropChance: 0.11,  // probabilidad de que un enemigo suelte power-up
   powerTime: 8,           // duración de los power-ups temporales (s)
+  shieldTime: 5,          // duración del escudo de espuma (s)
 };
+
+// ============================================================
+//  Audio chiptune: todo generado con Web Audio API
+// ============================================================
+const SND = {
+  ac: null, out: null,
+  muted: localStorage.getItem('sh_mute') === '1',
+  ensure() {   // se crea con el primer gesto del usuario (regla de los navegadores)
+    const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+    if (!AC) return;
+    if (!this.ac) {
+      this.ac = new AC();
+      this.out = this.ac.createGain();
+      this.out.gain.value = 0.32;
+      this.out.connect(this.ac.destination);
+    }
+    if (this.ac.state === 'suspended') this.ac.resume();
+  },
+  tone(f0, f1, dur, type, vol, delay) {
+    if (this.muted || !this.ac) return;
+    const t = this.ac.currentTime + (delay || 0);
+    const o = this.ac.createOscillator(), g = this.ac.createGain();
+    o.type = type || 'square';
+    o.frequency.setValueAtTime(f0, t);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(vol || 0.5, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.out);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  noise(dur, vol, delay, cutoff) {
+    if (this.muted || !this.ac) return;
+    const t = this.ac.currentTime + (delay || 0);
+    const n = Math.floor(this.ac.sampleRate * dur);
+    const buf = this.ac.createBuffer(1, n, this.ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = this.ac.createBufferSource();
+    src.buffer = buf;
+    const f = this.ac.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = cutoff || 800;
+    const g = this.ac.createGain();
+    g.gain.value = vol || 0.6;
+    src.connect(f); f.connect(g); g.connect(this.out);
+    src.start(t);
+  },
+};
+
+function toggleMute() {
+  SND.muted = !SND.muted;
+  localStorage.setItem('sh_mute', SND.muted ? '1' : '0');
+}
+
+function sfx(name) {
+  if (SND.muted || !SND.ac) return;
+  switch (name) {
+    case 'shoot':    SND.tone(900, 1500, 0.05, 'square', 0.16); break;
+    case 'hit':      SND.tone(240, 180, 0.05, 'square', 0.3); break;
+    case 'boom':     SND.noise(0.22, 0.7, 0, 900); SND.tone(160, 40, 0.18, 'triangle', 0.5); break;
+    case 'phit':     SND.noise(0.3, 0.9, 0, 600); SND.tone(300, 60, 0.35, 'sawtooth', 0.6); break;
+    case 'power':    SND.tone(520, 520, 0.07, 'square', 0.45); SND.tone(660, 660, 0.07, 'square', 0.45, 0.07); SND.tone(880, 880, 0.11, 'square', 0.45, 0.14); break;
+    case 'life':     SND.tone(660, 660, 0.09, 'square', 0.5); SND.tone(990, 990, 0.16, 'square', 0.5, 0.09); break;
+    case 'barrel':   SND.noise(0.5, 0.9, 0, 500); SND.tone(120, 30, 0.45, 'sawtooth', 0.7); break;
+    case 'bossin':   SND.tone(200, 55, 0.8, 'sawtooth', 0.7); SND.noise(0.7, 0.5, 0, 300); SND.tone(60, 45, 1.0, 'triangle', 0.8, 0.2); break;
+    case 'bosshit':  SND.tone(140, 100, 0.06, 'square', 0.35); break;
+    case 'bossdead': [523, 659, 784, 1047].forEach((f, i) => SND.tone(f, f, 0.12, 'square', 0.55, i * 0.11)); SND.noise(0.5, 0.7, 0, 900); break;
+    case 'chaos':    SND.tone(440, 440, 0.15, 'square', 0.55); SND.tone(310, 310, 0.15, 'square', 0.55, 0.16); SND.tone(440, 440, 0.15, 'square', 0.55, 0.32); break;
+    case 'win':      [392, 523, 659, 784].forEach((f, i) => SND.tone(f, f, 0.14, 'square', 0.55, i * 0.13)); break;
+    case 'lose':     [330, 262, 196, 131].forEach((f, i) => SND.tone(f, f, 0.2, 'triangle', 0.55, i * 0.18)); break;
+    case 'troll':    SND.noise(0.3, 0.9, 0, 1400); [330, 311, 294, 262].forEach((f, i) => SND.tone(f, f * 0.96, 0.24, 'sawtooth', 0.4, 0.3 + i * 0.22)); break;
+    case 'coin':     SND.tone(988, 988, 0.06, 'square', 0.45); SND.tone(1319, 1319, 0.18, 'square', 0.45, 0.06); break;
+    case 'tick':     SND.tone(1000, 1000, 0.04, 'square', 0.25); break;
+  }
+}
+
+// ============================================================
+//  Música de fondo: secuenciador chiptune de 2 pistas
+//  (bajo + melodía + percusión de ruido, en loop)
+// ============================================================
+const TRACKS = {
+  // marcha cervecera relajada (juego normal)
+  main: {
+    bpm: 108, bassType: 'triangle', bassVol: 0.30, leadVol: 0.13,
+    bass: [110, 0, 110, 0, 82.4, 0, 110, 0, 130.8, 0, 130.8, 0, 98, 0, 82.4, 0,
+           110, 0, 110, 0, 82.4, 0, 110, 0, 146.8, 0, 130.8, 0, 98, 0, 123.5, 0],
+    lead: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+           440, 0, 523, 0, 659, 0, 523, 0, 440, 0, 392, 0, 330, 0, 0, 0],
+    noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+  },
+  // el Rey Hueso: oscuro, rápido y con tritono amenazante
+  boss: {
+    bpm: 150, bassType: 'sawtooth', bassVol: 0.22, leadVol: 0.12,
+    bass: [82.4, 82.4, 116.5, 82.4, 82.4, 82.4, 123.5, 82.4,
+           82.4, 82.4, 116.5, 82.4, 98, 103.8, 110, 116.5],
+    lead: [0, 0, 0, 0, 659, 0, 622, 0, 0, 0, 0, 0, 659, 698, 659, 622],
+    noise: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+  },
+  // fanfarria de victoria (loop hasta la próxima partida)
+  victory: {
+    bpm: 132, bassType: 'triangle', bassVol: 0.26, leadVol: 0.16,
+    bass: [130.8, 0, 164.8, 0, 196, 0, 164.8, 0, 174.6, 0, 196, 0, 130.8, 0, 196, 0],
+    lead: [523, 0, 659, 0, 784, 0, 1047, 0, 0, 0, 784, 0, 880, 784, 659, 0,
+           698, 0, 880, 0, 784, 0, 659, 0, 523, 587, 659, 523, 587, 0, 523, 0],
+    noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
+  },
+  // derrota: lenta y melancólica (loop hasta la próxima partida)
+  defeat: {
+    bpm: 76, bassType: 'triangle', bassVol: 0.26, leadVol: 0.13,
+    bass: [110, 0, 0, 0, 103.8, 0, 0, 0, 98, 0, 0, 0, 82.4, 0, 0, 0],
+    lead: [440, 0, 0, 0, 415.3, 0, 0, 0, 392, 0, 0, 0, 329.6, 0, 0, 0,
+           0, 0, 349.2, 329.6, 311.1, 0, 293.7, 0, 261.6, 0, 0, 0, 0, 0, 0, 0],
+    noise: [0],
+  },
+};
+
+const MUSIC = {
+  track: null, step: 0, nextT: 0,
+  set(name) {
+    if (this.track !== name) { this.track = name; this.step = 0; this.nextT = 0; }
+  },
+  stop() { this.track = null; },
+  tick() {
+    if (!SND.ac || SND.muted || !this.track) return;
+    const now = SND.ac.currentTime;
+    if (this.nextT < now - 0.2) this.nextT = now + 0.05;   // resincroniza tras pausas/mute
+    const def = TRACKS[this.track];
+    // en el caos final el tema del jefe se acelera
+    const bpm = def.bpm * (this.track === 'boss' && S.matchLeft <= 10 ? 1.18 : 1);
+    const stepDur = 60 / bpm / 2;   // corcheas
+    while (this.nextT < now + 0.2) {
+      const d = this.nextT - now;
+      const b = def.bass[this.step % def.bass.length];
+      if (b) SND.tone(b, b, stepDur * 0.9, def.bassType, def.bassVol, d);
+      const l = def.lead[this.step % def.lead.length];
+      if (l) SND.tone(l, l, stepDur * 0.55, 'square', def.leadVol, d);
+      if (def.noise[this.step % def.noise.length]) SND.noise(0.04, 0.16, d, 3200);
+      this.step++;
+      this.nextT += stepDur;
+    }
+  },
+};
+
+// ============================================================
+//  Salón de la Fama local (misma UI que luego conecta a Supabase)
+// ============================================================
+const FAME_TABS = ['HOY', 'SEMANA', 'MES', 'TOTAL'];
+let fameTab = 0;
+
+function loadScores() {
+  try { return JSON.parse(localStorage.getItem('sh_scores')) || []; }
+  catch { return []; }
+}
+
+function saveScoreEntry(entry) {
+  const all = loadScores();
+  all.push(entry);
+  all.sort((a, b) => b.s - a.s);
+  localStorage.setItem('sh_scores', JSON.stringify(all.slice(0, 500)));
+}
+
+function periodScores(tab) {
+  const all = loadScores();
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const t7 = Date.now() - 7 * 864e5;
+  const t30 = Date.now() - 30 * 864e5;
+  return all.filter(e =>
+    tab === 0 ? e.t >= dayStart :
+    tab === 1 ? e.t >= t7 :
+    tab === 2 ? e.t >= t30 : true);
+}
+
+// Filtro básico de groserías (normaliza acentos y leet: 0→O, 3→E...)
+const BAD_WORDS = ['PUTO', 'PUTA', 'PENDEJ', 'VERGA', 'MIERDA', 'CULERO', 'CHINGA',
+  'JOTO', 'MAMON', 'CABRON', 'PERRA', 'ZORRA', 'PINCHE', 'MARICA',
+  'FUCK', 'SHIT', 'BITCH', 'PUSSY', 'CUNT', 'NIGG', 'NAZI', 'HITLER'];
+function isCleanName(name) {
+  let n = name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  n = n.replace(/0/g, 'O').replace(/1/g, 'I').replace(/3/g, 'E')
+       .replace(/4/g, 'A').replace(/5/g, 'S').replace(/7/g, 'T')
+       .replace(/[^A-Z]/g, '');
+  return !BAD_WORDS.some(w => n.includes(w));
+}
+
+// Rango de la partida: ⭐ a ⭐⭐⭐
+function calcStars() {
+  if (S.won || S.score >= 2600) return 3;
+  if (S.score >= 1200 || S.survived >= 40) return 2;
+  return 1;
+}
 
 // ============================================================
 //  Fuente pixel art (5px de alto + acentos)
@@ -462,6 +705,35 @@ const sprDrunk = makeSprite([
 ], { H: '#6a4a26', F: '#d9a066', k: PAL.dark, r: '#c46a6a',
      S: '#3e6a7d', P: '#39434e', b: '#22333f', B: '#a06d10' });
 
+// ============================================================
+//  Logo de Sin Hueso pixelizado para la pantalla de título:
+//  se reduce a baja resolución y el fondo blanco se vuelve
+//  transparente (requiere servirse por http, no file://)
+// ============================================================
+const logoCvs = document.createElement('canvas');
+let logoReady = false;
+if (typeof Image !== 'undefined') {
+  const logoImg = new Image();
+  logoImg.onload = () => {
+    try {
+      const R = 56;   // resolución pixel del logo
+      logoCvs.width = R; logoCvs.height = R;
+      const g = logoCvs.getContext('2d');
+      g.drawImage(logoImg, 0, 0, R, R);
+      const d = g.getImageData(0, 0, R, R);
+      for (let i = 0; i < d.data.length; i += 4) {
+        // blanco y casi-blanco → transparente
+        if (d.data[i] > 225 && d.data[i + 1] > 225 && d.data[i + 2] > 225) {
+          d.data[i + 3] = 0;
+        }
+      }
+      g.putImageData(d, 0, 0);
+      logoReady = true;
+    } catch (e) { /* abierto como file://: el título queda sin logo */ }
+  };
+  logoImg.src = 'sh_logo.jpeg';
+}
+
 // Nebulosas: manchas de pixeles dispersos generadas al cargar
 function makeNebula(wpx, hpx, colors) {
   const c = document.createElement('canvas');
@@ -566,7 +838,16 @@ const icoHeart = makeSprite([
   '...R...',
   '.......',
 ], { R: PAL.red });
-const PICKUP_ICONS = { hop: icoHop, ipa: icoFire, barrel: icoBarrel, nitro: icoBolt, life: icoHeart };
+const icoShield = makeSprite([
+  'SSSSSSS',
+  'SWWWWWS',
+  'SWSSSWS',
+  'SWWWWWS',
+  '.SSSSS.',
+  '..SSS..',
+  '...S...',
+], { S: PAL.tealSoft, W: PAL.foam });
+const PICKUP_ICONS = { hop: icoHop, ipa: icoFire, barrel: icoBarrel, nitro: icoBolt, life: icoHeart, shield: icoShield };
 
 // ---- Tipos de enemigo ----
 const ETYPES = {
@@ -605,6 +886,9 @@ const S = {
   boomT: 0, boomSpawn: 0,        // cataclismo si el jefe sobrevive
   cataclysmed: false,
   troll: false, trollT: 0, trollHit: false,   // el borracho trolea tu victoria
+  saved: false,                               // ¿ya guardó su puntaje esta partida?
+  lastName: localStorage.getItem('sh_name') || '',
+  lastSaveId: 0,
   endCooldown: 0,
   best: Number(localStorage.getItem('sh_best') || 0),
 };
@@ -613,6 +897,7 @@ const player = {
   x: W / 2, y: H - 74, w: 34, h: 30, fireT: 0, invuln: 0,
   weapon: 'normal', weaponT: 0,   // hop = doble, ipa = triple
   nitroT: 0,
+  shieldT: 0,                     // escudo de espuma: absorbe todo el daño
   styleIdx: 0,                    // estilo de cerveza de la partida
 };
 
@@ -707,32 +992,134 @@ const drunk = { active: false, x: 0, y: 0, vx: 0, phase: 0, hicT: 0, nextT: 12 +
 // ============================================================
 const keys = {};
 let pointerX = null;   // posición X objetivo cuando hay dedo/mouse presionado
+let justUnlocked = false;   // este gesto fue el que despertó el audio
 
 addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;   // el input del nombre manda
+  const wasLocked = !SND.ac;
+  SND.ensure();
   keys[e.code] = true;
   if (e.code === 'Space') e.preventDefault();
-  if (e.code === 'Space' || e.code === 'Enter') handleAction();
+  if (e.code === 'KeyM') toggleMute();
+  if (e.code === 'Space' || e.code === 'Enter') {
+    justUnlocked = wasLocked && !!SND.ac;   // solo cuenta si el audio sí se creó
+    handleAction();
+    justUnlocked = false;
+  }
 });
-addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('keyup', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  keys[e.code] = false;
+});
 
 function canvasX(clientX) {
   const r = canvas.getBoundingClientRect();
   return (clientX - r.left) / r.width * W;
 }
+function canvasY(clientY) {
+  const r = canvas.getBoundingClientRect();
+  return (clientY - r.top) / r.height * H;
+}
 canvas.addEventListener('pointerdown', e => {
   e.preventDefault();
-  pointerX = canvasX(e.clientX);
+  const wasLocked = !SND.ac;
+  SND.ensure();
+  const x = canvasX(e.clientX), y = canvasY(e.clientY);
+  // botón de silencio (esquina inferior derecha, en cualquier pantalla)
+  if (x > W - 50 && y > H - 50) { toggleMute(); return; }
+  if (S.state === 'fame') { fameTap(x, y); return; }
+  pointerX = x;
+  justUnlocked = wasLocked && !!SND.ac;   // solo cuenta si el audio sí se creó
   handleAction();
+  justUnlocked = false;
 });
 canvas.addEventListener('pointermove', e => {
   if (pointerX !== null) pointerX = canvasX(e.clientX);
 });
-addEventListener('pointerup', () => { pointerX = null; });
+addEventListener('pointerup', () => {
+  pointerX = null;
+  // en móviles el audio solo se desbloquea al SOLTAR el dedo (touchend)
+  SND.ensure();
+});
 addEventListener('pointercancel', () => { pointerX = null; });
+addEventListener('touchend', () => { SND.ensure(); });
 
 function handleAction() {
-  if (S.state === 'title') startGame();
-  else if (S.state === 'end' && S.endCooldown <= 0) startGame();
+  if (S.state === 'title') {
+    // el primer toque solo despierta la música del título; el segundo juega
+    if (justUnlocked && !SND.muted) return;
+    startGame();
+  }
+  else if (S.state === 'end' && S.endCooldown <= 0) {
+    // resultado → captura de nombre → Salón de la Fama
+    if (S.saved) showFame();
+    else showNameEntry();
+  }
+  else if (S.state === 'fame') startGame();   // con teclado; el tap usa fameTap
+}
+
+// ============================================================
+//  Captura de nombre (overlay HTML) y Salón de la Fama
+// ============================================================
+const elOverlay = document.getElementById('nameOverlay');
+const elInput = document.getElementById('nameInput');
+const elMsg = document.getElementById('nameMsg');
+
+function showNameEntry() {
+  S.state = 'name';
+  elOverlay.style.display = 'flex';
+  elInput.value = S.lastName || '';
+  elMsg.textContent = ' ';
+  setTimeout(() => elInput.focus(), 60);
+}
+
+function hideNameEntry() {
+  elOverlay.style.display = 'none';
+}
+
+function trySaveName() {
+  const name = (elInput.value || '').trim().toUpperCase().slice(0, 10);
+  if (!name) { elMsg.textContent = '¡ESCRIBE UN NOMBRE!'; return; }
+  if (!isCleanName(name)) {
+    elMsg.textContent = 'ESE NOMBRE NO, EH...';
+    elInput.value = '';
+    return;
+  }
+  const acc = S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0;
+  const entry = { n: name, s: S.score, a: acc, k: S.kills, st: calcStars(), t: Date.now() };
+  saveScoreEntry(entry);
+  S.saved = true;
+  S.lastName = name;
+  S.lastSaveId = entry.t;
+  localStorage.setItem('sh_name', name);
+  sfx('coin');
+  hideNameEntry();
+  showFame();
+}
+
+document.getElementById('btnSave').addEventListener('click', trySaveName);
+document.getElementById('btnSkip').addEventListener('click', () => {
+  hideNameEntry();
+  showFame();
+});
+elInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') trySaveName();
+  e.stopPropagation();
+});
+
+function showFame() {
+  S.state = 'fame';
+  fameTab = 0;
+}
+
+// Toques en el Salón de la Fama: pestañas y jugar de nuevo
+function fameTap(x, y) {
+  if (y >= 112 && y <= 152) {
+    const tw = 106, tx0 = (W - tw * 4 - 12) / 2;
+    const i = Math.floor((x - tx0) / (tw + 4));
+    if (i >= 0 && i < 4) { fameTab = i; sfx('tick'); return; }
+  }
+  if (y > 585) startGame();
 }
 
 // ============================================================
@@ -756,11 +1143,14 @@ function startGame() {
   S.chaosAnnounced = false;
   S.rainT = 0; S.kamiT = 0; S.btlT = 0;
   S.cataclysmed = false;
+  S.troll = false; S.trollHit = false;
+  S.saved = false;
   player.x = W / 2;
   player.fireT = 0;
   player.invuln = 0;
   player.weapon = 'normal'; player.weaponT = 0;
   player.nitroT = 0;
+  player.shieldT = 0;
   // estilo de la casa: fijo en eventos, aleatorio el resto del año
   player.styleIdx = EVENT_MUG !== null ? EVENT_MUG
                   : Math.floor(Math.random() * MUG_STYLES.length);
@@ -770,21 +1160,25 @@ function startGame() {
   spawnWave();
   S.nextWaveT = CFG.waveInterval;
   popups.push({ x: W / 2, y: H - 130, text: 'HOY SIRVES: ' + MUG_STYLES[player.styleIdx].name, life: 1.6 });
+  MUSIC.set('main');
 }
 
 function endGame(won) {
   S.state = 'end';
   S.won = won;
   if (won) S.score += 500;   // bonus por sobrevivir el minuto completo
-  // a veces el borracho trolea tu victoria (solo cosmético, jaja)
-  S.troll = won && Math.random() < 0.3;
+  // muy rara vez el borracho trolea tu victoria (solo cosmético, jaja)
+  S.troll = won && Math.random() < 0.08;
   S.trollT = 0;
   S.trollHit = false;
+  S.saved = false;
   S.endCooldown = 1.0;   // evita reiniciar por accidente con el mismo toque
   if (S.score > S.best) {
     S.best = S.score;
     localStorage.setItem('sh_best', String(S.best));
   }
+  // la tonada del final se queda en loop hasta que empiece otra partida
+  MUSIC.set(won ? 'victory' : 'defeat');
 }
 
 // ---- Generador de oleadas: la mezcla se endurece con el tiempo ----
@@ -878,6 +1272,7 @@ function beerX(be) {
 // ============================================================
 function update(dt) {
   S.time += dt;
+  MUSIC.tick();
 
   // Fondo (siempre animado, en todas las pantallas)
   for (const b of bubbles) {
@@ -978,6 +1373,8 @@ function update(dt) {
         S.shake = 12;
         S.flashT = 0.1;
         popups.push({ x: W / 2, y: 190, text: '¡PUM!', life: 1.2 });
+        sfx('troll');
+        MUSIC.set('defeat');   // hasta la música se pone triste, jaja
       }
     }
     return;
@@ -1023,6 +1420,7 @@ function update(dt) {
     if (player.weaponT <= 0) player.weapon = 'normal';
   }
   if (player.nitroT > 0) player.nitroT -= dt;
+  if (player.shieldT > 0) player.shieldT -= dt;
 
   // racha sin daño: +100 cada 15 segundos
   S.noDmgT += dt;
@@ -1030,6 +1428,7 @@ function update(dt) {
     S.noDmgT -= 15;
     S.score += 100;
     popups.push({ x: player.x, y: player.y - 40, text: 'RACHA +100', life: 1.1 });
+    sfx('coin');
   }
 
   // ---- Disparo automático (patrón según arma) ----
@@ -1051,6 +1450,7 @@ function update(dt) {
       bullets.push({ x: player.x, y: py, tier });
       S.shots++;
     }
+    sfx('shoot');
   }
   for (const b of bullets) {
     b.y -= CFG.bulletSpeed * dt;
@@ -1119,6 +1519,8 @@ function update(dt) {
     boss.swoop = -1; boss.swoopT = 6;   // picada de la mano
     boss.puT = 2.5;                     // power-ups que caen durante la pelea
     singularityFlare();
+    sfx('bossin');
+    MUSIC.set('boss');
   }
   const bossBusy = boss.state === 'enter' || boss.state === 'fight';
   // tras vencer al jefe ya no aparece ningún enemigo más
@@ -1206,6 +1608,7 @@ function update(dt) {
       popups.push({ x: W / 2, y: 300, text: '¡CAOS FINAL!', life: 1.6 });
       popups.push({ x: W / 2, y: 330, text: '¡EL BORRACHO SE VOLVIÓ LOCO!', life: 1.6 });
       S.shake = 10;
+      sfx('chaos');
     }
     // el borracho entra (o regresa) para atacar
     if (!drunk.active) {
@@ -1312,6 +1715,7 @@ function update(dt) {
       S.hits++;
       boss.hp--;
       boss.flash = 0.08;
+      sfx('bosshit');
       if (boss.hp <= 0) defeatBoss();
       continue;
     }
@@ -1324,7 +1728,7 @@ function update(dt) {
         S.hits++;
         d.hp--;
         if (d.hp <= 0) { d.dead = true; killEnemy(d.type, d.x, d.y); }
-        else d.flash = 0.1;
+        else { d.flash = 0.1; sfx('hit'); }
         break;
       }
     }
@@ -1337,7 +1741,7 @@ function update(dt) {
         S.hits++;
         be.hp--;
         if (be.hp <= 0) { be.dead = true; killEnemy('beer', bx, be.y); }
-        else be.flash = 0.1;
+        else { be.flash = 0.1; sfx('hit'); }
         break;
       }
     }
@@ -1352,7 +1756,7 @@ function update(dt) {
           S.hits++;
           c.hp--;
           if (c.hp <= 0) { c.alive = false; killEnemy(c.type, p.x, p.y); }
-          else c.flash = 0.1;
+          else { c.flash = 0.1; sfx('hit'); }
           break;
         }
       }
@@ -1421,7 +1825,15 @@ function update(dt) {
         }
       }
     }
-    if (hit) hitPlayer();
+    if (hit) {
+      if (player.shieldT > 0) {
+        // el escudo de espuma absorbe el golpe
+        explode(player.x, player.y - 10, PAL.tealSoft, 8);
+        sfx('hit');
+      } else {
+        hitPlayer();
+      }
+    }
   }
 
   // ---- Partículas y textos flotantes ----
@@ -1451,6 +1863,8 @@ function startCataclysm() {
   popups.push({ x: W / 2, y: 300, text: '¡NOOO! ¡EL LOTE!', life: 2 });
   singularityFlare();
   S.shake = 18;
+  MUSIC.stop();
+  sfx('barrel');
 }
 
 function killEnemy(type, x, y, fromBlast) {
@@ -1462,6 +1876,7 @@ function killEnemy(type, x, y, fromBlast) {
             : type === 'skull' ? PAL.purple
             : PAL.bone;
   explode(x, y, col, 14);
+  sfx('boom');
   // a veces suelta un power-up (no en cadena por el barril)
   if (!fromBlast && Math.random() < CFG.powerDropChance) {
     pickups.push({ x, y, type: pickPowerType(), phase: 0 });
@@ -1470,26 +1885,33 @@ function killEnemy(type, x, y, fromBlast) {
 
 function pickPowerType() {
   const r = Math.random();
-  if (r < 0.26) return 'hop';
-  if (r < 0.52) return 'ipa';
-  if (r < 0.72) return 'nitro';
-  if (r < 0.87) return 'barrel';
-  return 'life';   // 13%: el corazón ya no es tan raro
+  if (r < 0.24) return 'hop';
+  if (r < 0.48) return 'ipa';
+  if (r < 0.66) return 'nitro';
+  if (r < 0.80) return 'barrel';
+  if (r < 0.92) return 'life';
+  return 'shield';   // 8%: el más raro de todos
 }
 
 function applyPower(type) {
   const msgs = {
     hop: '¡HOP SHOT!', ipa: '¡TRIPLE IPA!', barrel: '¡BARRIL EXPLOSIVO!',
-    nitro: '¡NITRO!', life: '+1 PINTA',
+    nitro: '¡NITRO!', life: '+1 PINTA', shield: '¡ESCUDO DE ESPUMA!',
   };
   popups.push({ x: player.x, y: player.y - 44, text: msgs[type], life: 1.2 });
   if (type === 'hop' || type === 'ipa') {
     player.weapon = type;
     player.weaponT = CFG.powerTime;
+    sfx('power');
   } else if (type === 'nitro') {
     player.nitroT = CFG.powerTime;
+    sfx('power');
   } else if (type === 'life') {
     S.lives = Math.min(4, S.lives + 1);
+    sfx('life');
+  } else if (type === 'shield') {
+    player.shieldT = CFG.shieldTime;
+    sfx('power');
   } else if (type === 'barrel') {
     barrelBlast();
   }
@@ -1499,6 +1921,7 @@ function applyPower(type) {
 function barrelBlast() {
   S.flashT = 0.18;
   S.shake = 12;
+  sfx('barrel');
   for (const g of groups) {
     for (const c of g.cells) {
       if (!c.alive) continue;
@@ -1532,6 +1955,8 @@ function defeatBoss() {
   explode(boss.x, boss.y, PAL.amberHi, 20);
   singularityFlare();
   S.shake = 14;
+  sfx('bossdead');
+  MUSIC.set('main');   // vuelta de la victoria con la tonada de la casa
 
   // la onda expansiva barre a todo enemigo restante: victoria limpia,
   // ya no aparece nada más hasta que termine el reloj
@@ -1574,6 +1999,7 @@ function hitPlayer() {
   player.invuln = CFG.invulnTime;
   S.noDmgT = 0;   // se corta la racha sin daño
   S.shake = 8;
+  sfx('phit');
   explode(player.x, player.y, PAL.amberHi, 20);
   if (S.lives <= 0) endGame(false);
 }
@@ -1709,7 +2135,14 @@ function draw() {
     ctx.fillRect(-10, -10, W + 20, H + 20);
   }
 
-  if (S.state === 'title') { drawTitle(); ctx.restore(); return; }
+  if (S.state === 'title' || S.state === 'name' || S.state === 'fame') {
+    if (S.state === 'title') drawTitle();
+    else if (S.state === 'name') drawNameBg();
+    else drawFame();
+    drawMute();
+    ctx.restore();
+    return;
+  }
 
   // ---- Enemigos en formación ----
   for (const g of groups) {
@@ -1769,6 +2202,20 @@ function draw() {
     ctx.drawImage(sprP, (player.x - sprP.width / 2) | 0, (player.y - sprP.height / 2) | 0);
   }
 
+  // burbuja del escudo de espuma (parpadea cuando está por acabarse)
+  if (S.state !== 'boom' && player.shieldT > 0 &&
+      (player.shieldT > 1.5 || Math.floor(S.time * 8) % 2 === 0)) {
+    const rr = 27 + Math.sin(S.time * 6) * 2;
+    for (let a = 0; a < Math.PI * 2; a += 0.22) {
+      const x = player.x + Math.cos(a) * rr;
+      const y = player.y - 2 + Math.sin(a) * rr;
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = (a * 10 | 0) % 3 === 0 ? PAL.foam : PAL.tealSoft;
+      ctx.fillRect((x | 0) & ~1, (y | 0) & ~1, 3, 3);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ---- Partículas ----
   for (const pa of particles) {
     ctx.globalAlpha = Math.max(0, pa.life / pa.max);
@@ -1794,6 +2241,7 @@ function draw() {
 
   drawHUD();
   if (S.state === 'end') drawEnd();
+  drawMute();
   ctx.restore();
 }
 
@@ -1838,11 +2286,25 @@ function drawHUD() {
     ctx.fillRect(38, py + 8, 44, 6);
     ctx.fillStyle = PAL.yellow;
     ctx.fillRect(38, py + 8, 44 * player.nitroT / CFG.powerTime, 6);
+    py -= 28;
+  }
+  if (player.shieldT > 0) {
+    ctx.drawImage(icoShield, 12, py);
+    ctx.fillStyle = 'rgba(4,20,28,0.7)';
+    ctx.fillRect(38, py + 8, 44, 6);
+    ctx.fillStyle = PAL.tealSoft;
+    ctx.fillRect(38, py + 8, 44 * player.shieldT / CFG.shieldTime, 6);
   }
 }
 
 function drawTitle() {
   const blink = Math.floor(S.time * 2) % 2 === 0;
+
+  // logo pixelizado flotando suavemente
+  if (logoReady) {
+    const bob = Math.sin(S.time * 1.5) * 3;
+    ctx.drawImage(logoCvs, (W / 2 - 56) | 0, (24 + bob) | 0, 112, 112);
+  }
 
   drawText('SIN HUESO! PRESENTA', W / 2, 150, 2, PAL.tealSoft, 'center');
 
@@ -1874,6 +2336,81 @@ function drawTitle() {
   }
 }
 
+// Botón de silencio (esquina inferior derecha, todas las pantallas)
+function drawMute() {
+  const x = W - 44, y = H - 44;
+  ctx.fillStyle = 'rgba(4,20,28,0.6)';
+  ctx.fillRect(x, y, 34, 34);
+  ctx.strokeStyle = PAL.teal;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, 32, 32);
+  ctx.fillStyle = SND.muted ? PAL.teal : PAL.amberHi;
+  ctx.fillRect(x + 7, y + 14, 5, 7);    // bocina
+  ctx.fillRect(x + 12, y + 11, 4, 13);
+  if (SND.muted) {
+    drawText('X', x + 21, y + 13, 2, PAL.red);
+  } else {
+    ctx.fillRect(x + 20, y + 13, 2, 9);  // ondas
+    ctx.fillRect(x + 24, y + 10, 2, 15);
+  }
+}
+
+// Fondo de la pantalla de captura de nombre (el overlay HTML va encima)
+function drawNameBg() {
+  drawText('★ SALÓN DE LA FAMA ★', W / 2, 120, 3, PAL.amberHi, 'center');
+  drawText('PUNTAJE: ' + S.score, W / 2, 170, 2, PAL.foam, 'center');
+}
+
+// El Salón de la Fama con pestañas por periodo
+function drawFame() {
+  drawText('★ SALÓN DE LA FAMA ★', W / 2, 60, 3, PAL.amberHi, 'center');
+
+  // pestañas
+  const tw = 106, th = 30, ty = 116;
+  const tx0 = (W - tw * 4 - 12) / 2;
+  for (let i = 0; i < 4; i++) {
+    const tx = tx0 + i * (tw + 4);
+    ctx.fillStyle = i === fameTab ? PAL.amber : 'rgba(13,59,79,0.85)';
+    ctx.fillRect(tx, ty, tw, th);
+    drawText(FAME_TABS[i], tx + tw / 2, ty + 10, 2, i === fameTab ? PAL.dark : PAL.tealSoft, 'center');
+  }
+
+  const list = periodScores(fameTab);
+  if (list.length === 0) {
+    drawText('AÚN NO HAY PUNTAJES', W / 2, 290, 2, PAL.foam, 'center');
+    drawText('¡SÉ LA PRIMERA LEYENDA!', W / 2, 315, 2, PAL.tealSoft, 'center');
+  } else {
+    for (let i = 0; i < Math.min(10, list.length); i++) {
+      const e = list[i];
+      const ry = 178 + i * 34;
+      const mine = e.t === S.lastSaveId;
+      if (mine) {
+        ctx.fillStyle = 'rgba(217,151,30,0.18)';
+        ctx.fillRect(28, ry - 7, W - 56, 27);
+      }
+      const rankCol = i === 0 ? PAL.amberHi : i === 1 ? PAL.foam : i === 2 ? '#c9885a' : PAL.tealSoft;
+      drawText(String(i + 1), 44, ry, 2, rankCol, 'right');
+      drawText(e.n, 62, ry, 2, mine ? PAL.amberHi : PAL.foam);
+      drawText('★'.repeat(e.st || 1), 250, ry, 1, PAL.tealSoft);
+      drawText(String(e.s), W - 40, ry, 2, rankCol, 'right');
+    }
+    // tu mejor puntaje y posición en el periodo
+    if (S.lastName) {
+      const mine = list.filter(e => e.n === S.lastName);
+      if (mine.length > 0) {
+        const pos = list.indexOf(mine[0]) + 1;
+        drawText('TU MEJOR: ' + mine[0].s + ' · PUESTO #' + pos + ' DE ' + list.length,
+                 W / 2, 540, 2, PAL.amberHi, 'center');
+      }
+    }
+  }
+
+  if (Math.floor(S.time * 2) % 2 === 0) {
+    drawText('▶ JUGAR DE NUEVO', W / 2, 615, 3, PAL.amberHi, 'center');
+  }
+  drawText('TOCA UNA PESTAÑA PARA CAMBIAR DE PERIODO', W / 2, 665, 1, PAL.teal, 'center');
+}
+
 function drawEnd() {
   ctx.fillStyle = 'rgba(4,20,28,0.82)';
   ctx.fillRect(0, 0, W, H);
@@ -1894,8 +2431,14 @@ function drawEnd() {
     drawText('LAS CERVEZAS SIN SABOR GANARON ESTA VEZ...', W / 2, 245, 2, PAL.tealSoft, 'center');
   }
 
-  drawText(String(S.score), W / 2, 300, 7, PAL.foam, 'center');
-  drawText('PUNTOS', W / 2, 350, 2, PAL.tealSoft, 'center');
+  // rango de la partida: 1 a 3 estrellas
+  const nStars = calcStars();
+  for (let i = 0; i < 3; i++) {
+    drawText('★', W / 2 - 38 + i * 38, 262, 5, i < nStars ? PAL.amberHi : 'rgba(28,107,133,0.55)', 'center');
+  }
+
+  drawText(String(S.score), W / 2, 305, 7, PAL.foam, 'center');
+  drawText('PUNTOS', W / 2, 352, 2, PAL.tealSoft, 'center');
 
   if (S.won) drawText('BONUS SUPERVIVENCIA +500', W / 2, 372, 2, PAL.amberHi, 'center');
   if (S.bossKilled) drawText('★ REY HUESO DERROTADO +750 ★', W / 2, S.won ? 390 : 372, 2, PAL.amberHi, 'center');
@@ -1912,7 +2455,7 @@ function drawEnd() {
   }
 
   if (S.endCooldown <= 0 && Math.floor(S.time * 2) % 2 === 0) {
-    drawText('TOCA PARA REINTENTAR', W / 2, 560, 3, PAL.amberHi, 'center');
+    drawText('TOCA PARA CONTINUAR', W / 2, 560, 3, PAL.amberHi, 'center');
   }
 
   // ---- El borracho trolea la victoria por encima de todo ----
@@ -1957,6 +2500,10 @@ function resize() {
 }
 addEventListener('resize', resize);
 resize();
+
+// La tonada de la casa suena desde la pantalla de título
+// (arranca con el primer toque/tecla: los navegadores exigen un gesto)
+MUSIC.set('main');
 
 let last = performance.now();
 function loop(now) {

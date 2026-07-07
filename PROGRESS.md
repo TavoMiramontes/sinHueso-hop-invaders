@@ -4,7 +4,7 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 
 > *"Las cervezas sin sabor han invadido Sin Hueso. Tu misión es defender el último lote de cerveza artesanal."*
 
-## Estado actual: Etapas 1, 2 y 3 completas ✅
+## Estado actual: Etapas 1-4 completas ✅ — sigue Etapa 5 (Supabase)
 
 **El plan completo por etapas está al final de este archivo.** Trabajamos etapa por etapa: el usuario prueba cada una (PC + celular) y se ajusta antes de avanzar.
 
@@ -30,10 +30,18 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 - 5 estilos de cerveza aleatorios por partida para el tarro (IPA/Pilsner/Red/Brown/Stout, aviso "HOY SIRVES: X", iconos de vida a juego); `EVENT_MUG` fija el estilo durante eventos (Etapa 6).
 - Troleo del borracho: 30% de las victorias, botellazo al letrero a los 3s → "¡LOTE NO DEFENDIDO! EL BORRACHO TENÍA OTROS PLANES JAJA" (cosmético, los puntos cuentan).
 
-### Siguiente paso: Etapa 4 — Presentación completa (sin backend aún)
+### Etapa 4 hecha (validada por el usuario en PC y celular)
+- Flujo final: RESULTADO (rango ⭐-⭐⭐⭐: 3=vencer al jefe, 2=1200+ pts o 40s+) → captura de nombre (overlay HTML, ≤10 chars, filtro de groserías con normalización de acentos/leet) → Salón de la Fama local (localStorage `sh_scores`, máx 500) con pestañas HOY/SEMANA/MES/TOTAL tocables, top 10, entrada propia resaltada, "TU MEJOR/PUESTO #N" → JUGAR DE NUEVO.
+- Audio Web Audio API: ~16 SFX + secuenciador chiptune con 4 pistas (main 108bpm, boss 150bpm con tritono y +18% en caos, victory loop, defeat loop; el loop final suena hasta la próxima partida; el troleo cambia a defeat). Botón mute (esquina inf. der., tecla M), preferencia en `sh_mute`.
+- Desbloqueo de audio: 1er toque en título despierta la música (patrón insert-coin), 2º juega; en móvil el desbloqueo real ocurre en pointerup/touchend (regla de los navegadores). Si no hay AudioContext, el 1er toque juega directo.
+- Power-up nuevo: 🛡️ Escudo de Espuma (8% el más raro, 5s, absorbe todo el daño, burbuja pixelada que parpadea al acabarse).
+- Troleo del borracho reducido a 8% de las victorias.
+- Logo `sh_logo.jpeg` pixelizado en el título (56x56, blanco→transparente; requiere http, con file:// se omite sin error).
+- Pruebas en Node (scratchpad): smoke.js (partida completa/inmortal) y fame_test.js (flujo nombre→filtro→ranking→pestañas→reinicio).
+
+### Siguiente paso: Etapa 5 — Salón de la Fama real (Supabase)
 
 ### Etapas restantes
-- **Etapa 4:** resultado con rango ⭐–⭐⭐⭐, captura de nombre (≤10 chars, filtro de groserías), Salón de la Fama local con pestañas Hoy/Semana/Mes/Histórico, audio chiptune (Web Audio API) + botón mute, pulido móvil final.
 - **Etapa 5:** Supabase — tabla `scores` con RLS y CHECK anti-trampa, tabla `config`, ranking compartido con fallback offline a localStorage, `admin.html` con login del dueño, `supabase-schema.sql`, README.
 - **Etapa 6:** eventos re-skin activables desde admin (Oktoberfest, Halloween, Navidad, Independencia 🇲🇽) y deploy a GitHub Pages (URL para el tag NFC).
 
