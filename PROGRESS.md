@@ -4,7 +4,15 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 
 > *"Las cervezas sin sabor han invadido Sin Hueso. Tu misión es defender el último lote de cerveza artesanal."*
 
-## Estado actual: Etapas 1-4 completas ✅ — sigue Etapa 5 (Supabase)
+## Estado actual: Etapas 1-5 completas ✅ — sigue Etapa 6 (eventos + deploy)
+
+### Etapa 5 hecha (Supabase conectado y verificado con el proyecto real del usuario)
+- Proyecto Supabase `hop-invaders` creado por el usuario; llaves en `config.js` (anon, pública por diseño).
+- `supabase-schema.sql`: tabla `scores` (RLS: lectura/inserción públicas, borrado solo autenticado; CHECKs anti-trampa verificados: score ≤30000 rechazado en vivo) y tabla `config` (`active_event`).
+- Juego: guarda en la nube ("GUARDANDO..."), pestañas consultan Supabase (top 50), fila propia resaltada por id remoto, fallback offline a localStorage con aviso "SIN CONEXIÓN". `ACTIVE_EVENT` se lee al cargar (re-skins en Etapa 6).
+- `admin.html`: login del dueño (usuario creado en Authentication), selector de evento, borrado individual y total de puntajes.
+- `?reset` en la URL limpia datos locales del dispositivo (récord personal 'sh_best', ranking local, nombre).
+- Free tier: ojo con la pausa tras 7 días sin actividad → en Etapa 6 agregar ping automático (GitHub Action).
 
 **El plan completo por etapas está al final de este archivo.** Trabajamos etapa por etapa: el usuario prueba cada una (PC + celular) y se ajusta antes de avanzar.
 

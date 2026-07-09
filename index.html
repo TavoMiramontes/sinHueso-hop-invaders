@@ -77,6 +77,8 @@
     </div>
   </div>
 </div>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 'use strict';
 
@@ -284,10 +286,94 @@ const MUSIC = {
 };
 
 // ============================================================
-//  Salón de la Fama local (misma UI que luego conecta a Supabase)
+//  Supabase: ranking compartido entre todos los jugadores.
+//  Si no hay configuración o no hay internet, el juego cae
+//  automáticamente al ranking local (localStorage).
+// ============================================================
+const DB = {
+  client: null,
+  init() {
+    try {
+      const cfg = (typeof window !== 'undefined' && window.SH_CONFIG) || {};
+      if (cfg.url && cfg.key && typeof supabase !== 'undefined') {
+        this.client = supabase.createClient(cfg.url, cfg.key);
+      }
+    } catch (e) { this.client = null; }
+  },
+  withTimeout(p, ms) {
+    return Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error('timeout')), ms))]);
+  },
+  sinceFor(tab) {   // fecha de corte de cada pestaña
+    if (tab === 3) return null;
+    const now = new Date();
+    if (tab === 0) return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    return new Date(Date.now() - (tab === 1 ? 7 : 30) * 864e5).toISOString();
+  },
+  async fetchScores(tab) {
+    let q = this.client.from('scores')
+      .select('id,name,score,stars,created_at')
+      .order('score', { ascending: false })
+      .limit(50);
+    const since = this.sinceFor(tab);
+    if (since) q = q.gte('created_at', since);
+    const { data, error } = await this.withTimeout(q, 6000);
+    if (error) throw error;
+    return data.map(r => ({ id: r.id, n: r.name, s: r.score, st: r.stars, t: Date.parse(r.created_at) }));
+  },
+  async saveScore(entry) {
+    const { data, error } = await this.withTimeout(
+      this.client.from('scores')
+        .insert({ name: entry.n, score: Math.min(30000, entry.s), accuracy: entry.a,
+                  kills: Math.min(500, entry.k), stars: entry.st })
+        .select('id').single(), 6000);
+    if (error) throw error;
+    return data.id;
+  },
+  async fetchEvent() {
+    const { data, error } = await this.withTimeout(
+      this.client.from('config').select('active_event').eq('id', 1).single(), 6000);
+    if (error) throw error;
+    return data.active_event;
+  },
+};
+DB.init();
+
+// Evento especial activo (los re-skins se implementan en la Etapa 6)
+let ACTIVE_EVENT = 'none';
+if (DB.client) {
+  DB.fetchEvent().then(ev => { ACTIVE_EVENT = ev; }).catch(() => {});
+}
+
+// ============================================================
+//  Salón de la Fama (Supabase con respaldo local automático)
 // ============================================================
 const FAME_TABS = ['HOY', 'SEMANA', 'MES', 'TOTAL'];
 let fameTab = 0;
+let fameList = null;       // null = cargando
+let fameOffline = false;   // true = mostrando respaldo local por falta de conexión
+let fameSeq = 0;           // descarta respuestas viejas si cambian de pestaña rápido
+
+async function loadFame(tab) {
+  fameTab = tab;
+  const seq = ++fameSeq;
+  if (!DB.client) {
+    fameList = periodScores(tab);
+    // si hay configuración pero no cargó el cliente (sin internet), avisa
+    fameOffline = !!(typeof window !== 'undefined' && window.SH_CONFIG && window.SH_CONFIG.url);
+    return;
+  }
+  fameList = null;
+  try {
+    const rows = await DB.fetchScores(tab);
+    if (seq !== fameSeq) return;
+    fameList = rows;
+    fameOffline = false;
+  } catch (e) {
+    if (seq !== fameSeq) return;
+    fameList = periodScores(tab);
+    fameOffline = true;
+  }
+}
 
 function loadScores() {
   try { return JSON.parse(localStorage.getItem('sh_scores')) || []; }
@@ -861,6 +947,15 @@ for (const t of Object.values(ETYPES)) t.flash = makeFlash(t.spr);
 // ============================================================
 //  Estado del juego
 // ============================================================
+
+// Abrir el juego con "?reset" en la URL borra los datos locales de
+// este dispositivo (récord personal, ranking local y nombre guardado)
+if (typeof location !== 'undefined' && location.search.includes('reset')) {
+  localStorage.removeItem('sh_best');
+  localStorage.removeItem('sh_scores');
+  localStorage.removeItem('sh_name');
+}
+
 const S = {
   state: 'title',        // title | playing | end
   time: 0,               // reloj global (para animaciones)
@@ -889,6 +984,7 @@ const S = {
   saved: false,                               // ¿ya guardó su puntaje esta partida?
   lastName: localStorage.getItem('sh_name') || '',
   lastSaveId: 0,
+  lastRemoteId: 0,                            // id de la fila en Supabase (para resaltarla)
   endCooldown: 0,
   best: Number(localStorage.getItem('sh_best') || 0),
 };
@@ -1077,7 +1173,9 @@ function hideNameEntry() {
   elOverlay.style.display = 'none';
 }
 
-function trySaveName() {
+let savingScore = false;
+async function trySaveName() {
+  if (savingScore) return;
   const name = (elInput.value || '').trim().toUpperCase().slice(0, 10);
   if (!name) { elMsg.textContent = '¡ESCRIBE UN NOMBRE!'; return; }
   if (!isCleanName(name)) {
@@ -1087,11 +1185,27 @@ function trySaveName() {
   }
   const acc = S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0;
   const entry = { n: name, s: S.score, a: acc, k: S.kills, st: calcStars(), t: Date.now() };
-  saveScoreEntry(entry);
+  saveScoreEntry(entry);   // respaldo local siempre
   S.saved = true;
   S.lastName = name;
   S.lastSaveId = entry.t;
+  S.lastRemoteId = 0;
   localStorage.setItem('sh_name', name);
+
+  // subir al ranking compartido (si hay conexión)
+  if (DB.client) {
+    savingScore = true;
+    const btn = document.getElementById('btnSave');
+    btn.textContent = 'GUARDANDO...';
+    try {
+      S.lastRemoteId = await DB.saveScore(entry);
+    } catch (e) {
+      fameOffline = true;   // se guardó local; el ranking mostrará el respaldo
+    }
+    savingScore = false;
+    btn.textContent = 'GUARDAR';
+  }
+
   sfx('coin');
   hideNameEntry();
   showFame();
@@ -1109,7 +1223,7 @@ elInput.addEventListener('keydown', e => {
 
 function showFame() {
   S.state = 'fame';
-  fameTab = 0;
+  loadFame(0);
 }
 
 // Toques en el Salón de la Fama: pestañas y jugar de nuevo
@@ -1117,7 +1231,7 @@ function fameTap(x, y) {
   if (y >= 112 && y <= 152) {
     const tw = 106, tx0 = (W - tw * 4 - 12) / 2;
     const i = Math.floor((x - tx0) / (tw + 4));
-    if (i >= 0 && i < 4) { fameTab = i; sfx('tick'); return; }
+    if (i >= 0 && i < 4) { loadFame(i); sfx('tick'); return; }
   }
   if (y > 585) startGame();
 }
@@ -2375,15 +2489,24 @@ function drawFame() {
     drawText(FAME_TABS[i], tx + tw / 2, ty + 10, 2, i === fameTab ? PAL.dark : PAL.tealSoft, 'center');
   }
 
-  const list = periodScores(fameTab);
-  if (list.length === 0) {
+  // aviso de respaldo local cuando no hay conexión con el ranking global
+  if (fameOffline) {
+    drawText('SIN CONEXIÓN · RANKING SOLO DE ESTE DISPOSITIVO', W / 2, 158, 1, PAL.red, 'center');
+  }
+
+  const list = fameList;
+  if (list === null) {
+    if (Math.floor(S.time * 3) % 2 === 0) {
+      drawText('CARGANDO...', W / 2, 300, 2, PAL.tealSoft, 'center');
+    }
+  } else if (list.length === 0) {
     drawText('AÚN NO HAY PUNTAJES', W / 2, 290, 2, PAL.foam, 'center');
     drawText('¡SÉ LA PRIMERA LEYENDA!', W / 2, 315, 2, PAL.tealSoft, 'center');
   } else {
     for (let i = 0; i < Math.min(10, list.length); i++) {
       const e = list[i];
       const ry = 178 + i * 34;
-      const mine = e.t === S.lastSaveId;
+      const mine = e.id ? e.id === S.lastRemoteId : e.t === S.lastSaveId;
       if (mine) {
         ctx.fillStyle = 'rgba(217,151,30,0.18)';
         ctx.fillRect(28, ry - 7, W - 56, 27);
