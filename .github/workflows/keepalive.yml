@@ -1,7 +1,7 @@
 # Mantiene despierto el proyecto Free de Supabase: sin actividad por
-# ~7 días se pausa, así que este ping consulta el ranking 2 veces por
-# semana. La llave anon es pública por diseño (RLS protege los datos).
-name: Mantener Supabase despierto
+# ~7 dias se pausa, asi que este ping consulta el ranking 2 veces por
+# semana. La llave anon es publica por diseno (RLS protege los datos).
+name: keepalive
 
 on:
   schedule:
@@ -18,4 +18,4 @@ jobs:
             -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkZ3VwcWtzZ3p6aHRhenRsZG50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NTEzMDUsImV4cCI6MjA5OTEyNzMwNX0.NaGljaeO0o4q7rbmdiEqq6qLnFCIptCIfa98tXYSOhE" \
             "https://hdgupqksgzzhtaztldnt.supabase.co/rest/v1/scores?select=id&limit=1" \
             > /dev/null
-          echo "Supabase sigue despierto 🍺"
+          echo "Supabase sigue despierto"
