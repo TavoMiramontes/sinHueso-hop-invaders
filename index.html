@@ -127,21 +127,24 @@ const CFG = {
   lives: 3,               // pintas
   invulnTime: 1.6,        // invulnerabilidad tras un golpe (s)
   waveBaseSpeed: 72,      // velocidad lateral base de la formación (px/s)
-  waveSpeedPerWave: 11,   // + por cada oleada
+  waveSpeedPerWave: 12,   // + por cada oleada
   waveStepDown: 34,       // cuánto baja la formación al rebotar (px)
-  waveDescend: 14,        // descenso continuo de la formación (px/s)
-  waveInterval: 10,       // s entre oleadas (aunque siga viva la anterior)
+  waveDescend: 16,        // descenso continuo de la formación (px/s)
+  waveInterval: 9.5,      // s entre oleadas (aunque siga viva la anterior)
   waveDelay: 0.8,         // pausa si despejaste todo antes (s)
-  diveInterval: 3.0,      // s entre ataques en picada
+  diveInterval: 2.7,      // s entre ataques en picada
   diveSpeed: 330,         // velocidad máxima de la picada (px/s)
-  beerInterval: 4.6,      // s entre cervezas industriales (baja con oleadas)
-  canFireBase: 3.4,       // cadencia base de disparo de las latas (s)
-  dropSpeed: 235,         // velocidad del proyectil enemigo (px/s)
+  beerInterval: 4.2,      // s entre cervezas industriales (baja con oleadas)
+  canFireBase: 3.1,       // cadencia base de disparo de las latas (s)
+  dropSpeed: 245,         // velocidad del proyectil enemigo (px/s)
   bossAt: 40,             // segundo en que emerge el Rey Hueso
   bossHp: 42,             // vida del jefe
   powerDropChance: 0.11,  // probabilidad de que un enemigo suelte power-up
   powerTime: 8,           // duración de los power-ups temporales (s)
   shieldTime: 5,          // duración del escudo de espuma (s)
+  laserTime: 3,           // duración del Láser de Lúpulo (s)
+  livesBonus: 150,        // puntos por pinta restante al ganar
+  timeBonus: 30,          // puntos por segundo de sobra al vencer al jefe
 };
 
 // ============================================================
@@ -215,6 +218,7 @@ function sfx(name) {
     case 'troll':    SND.noise(0.3, 0.9, 0, 1400); [330, 311, 294, 262].forEach((f, i) => SND.tone(f, f * 0.96, 0.24, 'sawtooth', 0.4, 0.3 + i * 0.22)); break;
     case 'coin':     SND.tone(988, 988, 0.06, 'square', 0.45); SND.tone(1319, 1319, 0.18, 'square', 0.45, 0.06); break;
     case 'tick':     SND.tone(1000, 1000, 0.04, 'square', 0.25); break;
+    case 'laser':    SND.tone(180, 1400, 0.5, 'sawtooth', 0.5); SND.tone(70, 55, 3.0, 'sawtooth', 0.26, 0.3); SND.noise(0.4, 0.4, 0, 2000); break;
   }
 }
 
@@ -906,15 +910,6 @@ const icoBarrel = makeSprite([
   '.KKKKK.',
   '.......',
 ], { K: '#a06d38', D: '#5e3d1a' });
-const icoBolt = makeSprite([
-  '...YY..',
-  '..YY...',
-  '.YYYY..',
-  '...YY..',
-  '..YY...',
-  '.YY....',
-  '.......',
-], { Y: PAL.yellow });
 const icoHeart = makeSprite([
   '.RR.RR.',
   'RRRRRRR',
@@ -933,7 +928,7 @@ const icoShield = makeSprite([
   '..SSS..',
   '...S...',
 ], { S: PAL.tealSoft, W: PAL.foam });
-const PICKUP_ICONS = { hop: icoHop, ipa: icoFire, barrel: icoBarrel, nitro: icoBolt, life: icoHeart, shield: icoShield };
+const PICKUP_ICONS = { hop: icoHop, ipa: icoFire, barrel: icoBarrel, life: icoHeart, shield: icoShield };
 
 // ---- Tipos de enemigo ----
 const ETYPES = {
@@ -981,6 +976,8 @@ const S = {
   boomT: 0, boomSpawn: 0,        // cataclismo si el jefe sobrevive
   cataclysmed: false,
   troll: false, trollT: 0, trollHit: false,   // el borracho trolea tu victoria
+  bossTimeLeft: 0,       // segundos de sobra al vencer al jefe
+  livesBonus: 0, timeBonus: 0,   // desglose de bonos del final
   saved: false,                               // ¿ya guardó su puntaje esta partida?
   lastName: localStorage.getItem('sh_name') || '',
   lastSaveId: 0,
@@ -992,8 +989,8 @@ const S = {
 const player = {
   x: W / 2, y: H - 74, w: 34, h: 30, fireT: 0, invuln: 0,
   weapon: 'normal', weaponT: 0,   // hop = doble, ipa = triple
-  nitroT: 0,
   shieldT: 0,                     // escudo de espuma: absorbe todo el daño
+  laserT: 0, laserTick: 0,        // Láser de Lúpulo (súper poder a 5 pintas)
   styleIdx: 0,                    // estilo de cerveza de la partida
 };
 
@@ -1183,7 +1180,7 @@ async function trySaveName() {
     elInput.value = '';
     return;
   }
-  const acc = S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0;
+  const acc = Math.min(100, S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0);
   const entry = { n: name, s: S.score, a: acc, k: S.kills, st: calcStars(), t: Date.now() };
   saveScoreEntry(entry);   // respaldo local siempre
   S.saved = true;
@@ -1258,13 +1255,14 @@ function startGame() {
   S.rainT = 0; S.kamiT = 0; S.btlT = 0;
   S.cataclysmed = false;
   S.troll = false; S.trollHit = false;
+  S.bossTimeLeft = 0; S.livesBonus = 0; S.timeBonus = 0;
   S.saved = false;
   player.x = W / 2;
   player.fireT = 0;
   player.invuln = 0;
   player.weapon = 'normal'; player.weaponT = 0;
-  player.nitroT = 0;
   player.shieldT = 0;
+  player.laserT = 0; player.laserTick = 0;
   // estilo de la casa: fijo en eventos, aleatorio el resto del año
   player.styleIdx = EVENT_MUG !== null ? EVENT_MUG
                   : Math.floor(Math.random() * MUG_STYLES.length);
@@ -1280,9 +1278,15 @@ function startGame() {
 function endGame(won) {
   S.state = 'end';
   S.won = won;
-  if (won) S.score += 500;   // bonus por sobrevivir el minuto completo
+  if (won) {
+    S.score += 500;   // bonus por sobrevivir el minuto completo
+    // pintas restantes y tiempo de sobra contra el jefe también pagan
+    S.livesBonus = S.lives * CFG.livesBonus;
+    S.timeBonus = S.bossKilled ? S.bossTimeLeft * CFG.timeBonus : 0;
+    S.score += S.livesBonus + S.timeBonus;
+  }
   // muy rara vez el borracho trolea tu victoria (solo cosmético, jaja)
-  S.troll = won && Math.random() < 0.08;
+  S.troll = won && Math.random() < 0.03;
   S.trollT = 0;
   S.trollHit = false;
   S.saved = false;
@@ -1507,23 +1511,14 @@ function update(dt) {
   }
 
   // ---- Jugador ----
-  const nitro = player.nitroT > 0 ? 1.8 : 1;
-  // estela de chispas mientras el nitro está activo
-  if (player.nitroT > 0 && Math.random() < 0.6) {
-    particles.push({
-      x: player.x - 10 + Math.random() * 20, y: player.y + 16,
-      vx: (Math.random() - 0.5) * 30, vy: 90 + Math.random() * 40,
-      life: 0.3, max: 0.3, color: PAL.yellow, size: 3,
-    });
-  }
   let move = 0;
   if (keys['ArrowLeft'] || keys['KeyA']) move -= 1;
   if (keys['ArrowRight'] || keys['KeyD']) move += 1;
   if (move !== 0) {
-    player.x += move * CFG.playerSpeed * nitro * dt;
+    player.x += move * CFG.playerSpeed * dt;
   } else if (pointerX !== null) {
     // seguir al dedo con suavizado
-    player.x += (pointerX - player.x) * Math.min(1, CFG.touchFollow * nitro * dt);
+    player.x += (pointerX - player.x) * Math.min(1, CFG.touchFollow * dt);
   }
   player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
   if (player.invuln > 0) player.invuln -= dt;
@@ -1533,7 +1528,6 @@ function update(dt) {
     player.weaponT -= dt;
     if (player.weaponT <= 0) player.weapon = 'normal';
   }
-  if (player.nitroT > 0) player.nitroT -= dt;
   if (player.shieldT > 0) player.shieldT -= dt;
 
   // racha sin daño: +100 cada 15 segundos
@@ -1545,8 +1539,8 @@ function update(dt) {
     sfx('coin');
   }
 
-  // ---- Disparo automático (patrón según arma) ----
-  player.fireT -= dt;
+  // ---- Disparo automático (patrón según arma; el láser lo reemplaza) ----
+  if (player.laserT <= 0) player.fireT -= dt;
   if (player.fireT <= 0) {
     player.fireT = CFG.fireInterval;
     const py = player.y - player.h / 2 - 4;
@@ -1879,6 +1873,59 @@ function update(dt) {
   }
   bullets = bullets.filter(b => !b.dead);
 
+  // ---- LÁSER DE LÚPULO: columna devastadora durante unos segundos ----
+  if (player.laserT > 0) {
+    player.laserT -= dt;
+    player.laserTick -= dt;
+    const half = 22;
+
+    // desintegra proyectiles enemigos que toquen la columna
+    for (const dr of drops) {
+      if (Math.abs(dr.x - player.x) < half && dr.y < player.y) dr.dead = true;
+    }
+
+    if (player.laserTick <= 0) {
+      player.laserTick = 0.1;   // pulso de daño
+      if (boss.state === 'fight' &&
+          Math.abs(boss.x - player.x) < half + 24 && boss.y < player.y) {
+        boss.hp--;
+        boss.flash = 0.08;
+        if (boss.hp <= 0) defeatBoss();
+      }
+      for (const d of divers) {
+        if (d.dead || Math.abs(d.x - player.x) >= half + 12 || d.y >= player.y) continue;
+        d.hp--;
+        if (d.hp <= 0) { d.dead = true; killEnemy(d.type, d.x, d.y, true); }
+        else d.flash = 0.1;
+      }
+      for (const be of beers) {
+        if (be.dead) continue;
+        const bx = beerX(be);
+        if (Math.abs(bx - player.x) >= half + 10 || be.y >= player.y) continue;
+        be.hp--;
+        if (be.hp <= 0) { be.dead = true; killEnemy('beer', bx, be.y, true); }
+        else be.flash = 0.1;
+      }
+      for (const g of groups) {
+        for (const c of g.cells) {
+          if (!c.alive) continue;
+          const p = enemyPos(g, c);
+          if (Math.abs(p.x - player.x) >= half + 12 || p.y >= player.y || p.y < -10) continue;
+          c.hp--;
+          if (c.hp <= 0) { c.alive = false; killEnemy(c.type, p.x, p.y, true); }
+          else c.flash = 0.1;
+        }
+      }
+    }
+
+    // el precio del poder: al apagarse quedas con 1 pinta
+    if (player.laserT <= 0) {
+      S.lives = 1;
+      player.invuln = 1.2;
+      popups.push({ x: player.x, y: player.y - 44, text: 'EL PRECIO: QUEDA 1 PINTA', life: 1.4 });
+    }
+  }
+
   // ---- Daño al jugador ----
   if (player.invuln <= 0) {
     let hit = false;
@@ -1999,36 +2046,44 @@ function killEnemy(type, x, y, fromBlast) {
 
 function pickPowerType() {
   const r = Math.random();
-  if (r < 0.24) return 'hop';
-  if (r < 0.48) return 'ipa';
-  if (r < 0.66) return 'nitro';
-  if (r < 0.80) return 'barrel';
-  if (r < 0.92) return 'life';
-  return 'shield';   // 8%: el más raro de todos
+  if (r < 0.28) return 'hop';
+  if (r < 0.56) return 'ipa';
+  if (r < 0.74) return 'barrel';
+  if (r < 0.90) return 'life';
+  return 'shield';   // 10%: el más raro de todos
 }
 
 function applyPower(type) {
   const msgs = {
     hop: '¡HOP SHOT!', ipa: '¡TRIPLE IPA!', barrel: '¡BARRIL EXPLOSIVO!',
-    nitro: '¡NITRO!', life: '+1 PINTA', shield: '¡ESCUDO DE ESPUMA!',
+    life: '+1 PINTA', shield: '¡ESCUDO DE ESPUMA!',
   };
   popups.push({ x: player.x, y: player.y - 44, text: msgs[type], life: 1.2 });
   if (type === 'hop' || type === 'ipa') {
     player.weapon = type;
     player.weaponT = CFG.powerTime;
     sfx('power');
-  } else if (type === 'nitro') {
-    player.nitroT = CFG.powerTime;
-    sfx('power');
   } else if (type === 'life') {
-    S.lives = Math.min(4, S.lives + 1);
+    S.lives = Math.min(5, S.lives + 1);
     sfx('life');
+    // ¡5 pintas al límite! se desata el Láser de Lúpulo
+    if (S.lives === 5 && player.laserT <= 0) triggerLaser();
   } else if (type === 'shield') {
     player.shieldT = CFG.shieldTime;
     sfx('power');
   } else if (type === 'barrel') {
     barrelBlast();
   }
+}
+
+// El súper poder: 5 pintas desatan el láser... y te dejan con 1
+function triggerLaser() {
+  player.laserT = CFG.laserTime;
+  player.laserTick = 0;
+  popups.push({ x: player.x, y: player.y - 70, text: '¡LÁSER DE LÚPULO!', life: 1.6 });
+  popups.push({ x: player.x, y: player.y - 50, text: '¡5 PINTAS AL LÍMITE!', life: 1.6 });
+  S.shake = 10;
+  sfx('laser');
 }
 
 // El barril explosivo: limpia la pantalla de enemigos
@@ -2061,6 +2116,7 @@ function defeatBoss() {
   boss.state = 'dead';
   S.kills++;
   S.bossKilled = true;
+  S.bossTimeLeft = Math.max(0, Math.ceil(S.matchLeft));   // tiempo de sobra = bonus al final
   S.score += 750;   // 500 del jefe + 250 de bonus
   popups.push({ x: boss.x, y: boss.y, text: '+750', life: 1.4 });
   popups.push({ x: W / 2, y: boss.y - 55, text: '¡REY HUESO DERROTADO!', life: 1.8 });
@@ -2310,6 +2366,30 @@ function draw() {
     ctx.drawImage(spr, (dr.x - spr.width / 2) | 0, (dr.y - spr.height / 2) | 0);
   }
 
+  // ---- Láser de Lúpulo: columna de luz verde desde el tarro ----
+  if (S.state !== 'boom' && player.laserT > 0) {
+    const bx = player.x | 0;
+    const topH = (player.y - 18) | 0;
+    const wob = Math.sin(S.time * 40) * 6;
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = PAL.green;
+    ctx.fillRect(bx - 22 - (wob / 2 | 0), 0, 44 + (wob | 0), topH);
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = PAL.greenHi;
+    ctx.fillRect(bx - 13, 0, 26, topH);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = PAL.foam;
+    ctx.fillRect(bx - 6, 0, 12, topH);
+    // chispas de lúpulo a lo largo del rayo
+    if (Math.random() < 0.8) {
+      particles.push({
+        x: bx - 20 + Math.random() * 40, y: Math.random() * topH,
+        vx: (Math.random() - 0.5) * 90, vy: -50 - Math.random() * 40,
+        life: 0.25, max: 0.25, color: PAL.greenHi, size: 3,
+      });
+    }
+  }
+
   // ---- Jugador (parpadea si es invulnerable; explotó en el cataclismo) ----
   if (S.state !== 'boom' && (player.invuln <= 0 || Math.floor(S.time * 12) % 2 === 0)) {
     const sprP = sprPlayers[player.styleIdx];
@@ -2392,14 +2472,6 @@ function drawHUD() {
     ctx.fillRect(38, py + 8, 44, 6);
     ctx.fillStyle = PAL.amberHi;
     ctx.fillRect(38, py + 8, 44 * player.weaponT / CFG.powerTime, 6);
-    py -= 28;
-  }
-  if (player.nitroT > 0) {
-    ctx.drawImage(icoBolt, 12, py);
-    ctx.fillStyle = 'rgba(4,20,28,0.7)';
-    ctx.fillRect(38, py + 8, 44, 6);
-    ctx.fillStyle = PAL.yellow;
-    ctx.fillRect(38, py + 8, 44 * player.nitroT / CFG.powerTime, 6);
     py -= 28;
   }
   if (player.shieldT > 0) {
@@ -2563,18 +2635,22 @@ function drawEnd() {
   drawText(String(S.score), W / 2, 305, 7, PAL.foam, 'center');
   drawText('PUNTOS', W / 2, 352, 2, PAL.tealSoft, 'center');
 
-  if (S.won) drawText('BONUS SUPERVIVENCIA +500', W / 2, 372, 2, PAL.amberHi, 'center');
-  if (S.bossKilled) drawText('★ REY HUESO DERROTADO +750 ★', W / 2, S.won ? 390 : 372, 2, PAL.amberHi, 'center');
+  // desglose de bonos
+  let by = 372;
+  if (S.won) { drawText('BONUS SUPERVIVENCIA +500', W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
+  if (S.bossKilled) { drawText('★ REY HUESO DERROTADO +750 ★', W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
+  if (S.livesBonus > 0) { drawText('PINTAS RESTANTES +' + S.livesBonus, W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
+  if (S.timeBonus > 0) { drawText('TIEMPO DE SOBRA +' + S.timeBonus, W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
 
-  const acc = S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0;
-  drawText('ENEMIGOS DERROTADOS: ' + S.kills, W / 2, 410, 2, PAL.foam, 'center');
-  drawText('TIEMPO: 0:' + String(Math.min(59, Math.floor(S.survived))).padStart(2, '0'), W / 2, 432, 2, PAL.foam, 'center');
-  drawText('PRECISIÓN: ' + acc + '%', W / 2, 454, 2, PAL.foam, 'center');
+  const acc = Math.min(100, S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0);
+  drawText('ENEMIGOS DERROTADOS: ' + S.kills, W / 2, 448, 2, PAL.foam, 'center');
+  drawText('TIEMPO: 0:' + String(Math.min(59, Math.floor(S.survived))).padStart(2, '0'), W / 2, 468, 2, PAL.foam, 'center');
+  drawText('PRECISIÓN: ' + acc + '%', W / 2, 488, 2, PAL.foam, 'center');
 
   if (S.score >= S.best && S.score > 0) {
-    drawText('★ ¡NUEVO RÉCORD! ★', W / 2, 500, 2, PAL.amberHi, 'center');
+    drawText('★ ¡NUEVO RÉCORD! ★', W / 2, 520, 2, PAL.amberHi, 'center');
   } else if (S.best > 0) {
-    drawText('RÉCORD: ' + S.best, W / 2, 500, 2, PAL.tealSoft, 'center');
+    drawText('RÉCORD: ' + S.best, W / 2, 520, 2, PAL.tealSoft, 'center');
   }
 
   if (S.endCooldown <= 0 && Math.floor(S.time * 2) % 2 === 0) {
