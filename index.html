@@ -1152,6 +1152,69 @@ const sprNopal = makeSprite([
   '..GGG...',
 ], { G: '#3e8e4a', R: PAL.redHi });
 
+// — Etapa 7.2: San Valentín, Día de Muertos y Aniversario —
+const sprHatHeart = makeSprite([
+  '.HR.RR.',
+  'RRRRRRR',
+  '.RRRRR.',
+  '..RRR..',
+], { R: PAL.red, H: PAL.redHi });
+const sprHatCempa = makeSprite([
+  '..O.O.O..',
+  '.OYOYOYO.',
+  '..OOOOO..',
+], { O: '#e8821e', Y: PAL.yellow });
+const sprHatParty = makeSprite([
+  '...Y...',
+  '..AAA..',
+  '..TTT..',
+  '.AAAAA.',
+], { Y: PAL.yellow, A: PAL.amberHi, T: PAL.tealSoft });
+
+const sprRose = makeSprite([
+  '.RRH..',
+  'RRRRR.',
+  'RRRRR.',
+  '.RRR..',
+  '..G...',
+  '.GGG..',
+  '..G...',
+], { R: PAL.red, H: PAL.redHi, G: PAL.green });
+const sprCempa = makeSprite([
+  '..OO..',
+  '.OOOO.',
+  'OOYYOO',
+  'OOYYOO',
+  '.OOOO.',
+  '..OO..',
+  '..G...',
+  '.GG...',
+], { O: '#e8821e', Y: PAL.yellow, G: PAL.green });
+const sprVela = makeSprite([
+  '..Y..',
+  '..O..',
+  '.WWW.',
+  '.WWW.',
+  '.WWW.',
+  '.WWW.',
+], { Y: PAL.yellow, O: '#e8821e', W: PAL.foam });
+const sprGlobo = makeSprite([
+  '.AAA.',
+  'AHAAA',
+  'AAAAA',
+  'AAAAA',
+  '.AAA.',
+  '..A..',
+  '..W..',
+], { A: PAL.amberHi, H: PAL.foam, W: PAL.foam });
+const sprEstrella = makeSprite([
+  '..Y..',
+  '.YYY.',
+  'YYYYY',
+  '.YYY.',
+  '.Y.Y.',
+], { Y: PAL.amberHi });
+
 const THEMES = {
   oktoberfest: {
     label: 'OKTOBERFEST',
@@ -1200,6 +1263,48 @@ const THEMES = {
       lead: [440, 0, 523, 587, 659, 0, 659, 0, 587, 0, 523, 0, 440, 0, 0, 0],
       noise: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] },
   },
+  sanvalentin: {
+    label: 'SAN VALENTÍN',
+    bgTop: '#1a0410', bgBottom: '#45102c',
+    mug: 2,                 // red ale, la cerveza del romance
+    hat: sprHatHeart,
+    decor: [sprRose],
+    ambient: 'papel',       // pétalos cayendo
+    ambientColors: ['#ff6f5e', '#e04a3a', '#f4efe6'],
+    music: { bpm: 96, bassType: 'triangle', bassVol: 0.26, leadVol: 0.13,
+      bass: [130.8, 0, 0, 0, 110, 0, 0, 0, 87.3, 0, 0, 0, 98, 0, 0, 0],
+      lead: [523, 0, 659, 0, 784, 0, 659, 0, 698, 0, 659, 0, 587, 0, 523, 0],
+      noise: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] },
+  },
+  muertos: {
+    label: 'DÍA DE MUERTOS',
+    bgTop: '#12041a', bgBottom: '#54230a',
+    mug: 0,                 // ámbar, como el cempasúchil
+    hat: sprHatCempa,
+    decor: [sprCempa, sprVela],
+    ambient: 'papel',       // papel picado naranja y morado
+    ambientColors: ['#e8821e', '#b05ad0', '#ff9ecb'],
+    music: { bpm: 104, bassType: 'triangle', bassVol: 0.3, leadVol: 0.13,
+      bass: [110, 0, 110, 0, 87.3, 0, 87.3, 0, 98, 0, 98, 0, 82.4, 0, 82.4, 0],
+      lead: [440, 0, 523, 0, 659, 0, 523, 0, 587, 0, 523, 0, 494, 0, 440, 0],
+      noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0] },
+  },
+  aniversario: {
+    label: 'ANIVERSARIO',
+    // "3 AÑOS" se calcula solo: Sin Hueso nació en junio de 2023
+    banner: '★ ' + Math.max(1, new Date().getFullYear() - 2023) + ' AÑOS DE SIN HUESO ★',
+    bgTop: '#050b20', bgBottom: '#6a4c0c',
+    mug: null,              // fiesta: rotan las 5 cervezas de la casa
+    hat: sprHatParty,
+    decor: [sprGlobo, sprEstrella],
+    ambient: 'papel',       // confeti dorado
+    ambientColors: ['#f2b53a', '#2c8aa8', '#f4efe6'],
+    music: { bpm: 112, bassType: 'triangle', bassVol: 0.3, leadVol: 0.15,
+      // Las Mañanitas: "estas son las mañanitas..."
+      bass: [130.8, 0, 130.8, 0, 130.8, 0, 130.8, 0, 98, 0, 98, 0, 98, 0, 98, 0],
+      lead: [392, 0, 392, 0, 440, 0, 392, 0, 523, 0, 494, 0, 0, 0, 0, 0],
+      noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] },
+  },
 };
 
 function curTheme() { return THEMES[ACTIVE_EVENT] || null; }
@@ -1234,16 +1339,18 @@ function applyTheme(ev) {
   if (ev === 'independencia') ev = 'fiesta';   // nombre viejo guardado en la BD
   ACTIVE_EVENT = ev || 'none';
   const th = curTheme();
-  EVENT_MUG = th ? th.mug : null;
+  EVENT_MUG = (th && th.mug != null) ? th.mug : null;   // null = tarro aleatorio
   bgTheme = (th && th.decor) ? initLayer(th.decor, 3, 22, 36) : [];
   ambient = [];
   if (th && th.ambient) {
+    const cols = th.ambientColors ||
+      (th.ambient === 'snow' ? [PAL.foam] : ['#3e8e4a', '#f4efe6', '#e04a3a']);
     for (let i = 0; i < 34; i++) {
       ambient.push({
         x: Math.random() * W, y: Math.random() * H,
         vy: th.ambient === 'snow' ? 18 + Math.random() * 26 : 30 + Math.random() * 30,
         phase: Math.random() * Math.PI * 2,
-        c: th.ambient === 'snow' ? PAL.foam : ['#3e8e4a', '#f4efe6', '#e04a3a'][i % 3],
+        c: cols[i % cols.length],
         w: th.ambient === 'snow' ? 2 : 4,
         h: th.ambient === 'snow' ? 2 : 3,
       });
@@ -2699,7 +2806,7 @@ function drawTitle() {
   // edición especial activa
   const th = curTheme();
   if (th) {
-    drawText('★ EDICIÓN ' + th.label + ' ★', W / 2, 318, 2, PAL.amberHi, 'center');
+    drawText(th.banner || ('★ EDICIÓN ' + th.label + ' ★'), W / 2, 318, 2, PAL.amberHi, 'center');
   }
 
   drawText('LAS CERVEZAS SIN SABOR HAN INVADIDO.', W / 2, 340, 2, PAL.foam, 'center');
