@@ -4,7 +4,12 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 
 > *"Las cervezas sin sabor han invadido Sin Hueso. Tu misión es defender el último lote de cerveza artesanal."*
 
-## Estado actual: Etapas 1-5 completas ✅ — sigue Etapa 6 (eventos + deploy)
+## Estado actual: Etapas 1-6 en cierre — juego publicado 🚀
+
+### Etapa 6 (en curso final)
+- 6.1 ✅ Temas de eventos: Oktoberfest/Halloween/Navidad/Independencia como paquetes de datos en `THEMES` (fondo, sombreros pixel, decoración parallax, clima nieve/papel picado, tarro fijo, música). Previsualización con `?evento=X`; producción vía admin.html→Supabase. Para eventos futuros: agregar entrada a THEMES + option en admin (y correr una vez `alter table public.config drop constraint config_active_event_check;` para no volver a tocar la BD).
+- 6.2 ✅ Publicado en GitHub Pages: repo público `TavoMiramontes/sinHueso-hop-invaders` (rama master), URL https://tavomiramontes.github.io/sinHueso-hop-invaders/ — esta es la URL para el tag NFC. GitHub Action `keepalive.yml` hace ping al ranking lunes y jueves para que Supabase Free no se pause. Nota: git en esta máquina requirió `http.sslBackend schannel`.
+- 6.3 pendiente: prueba de punta a punta con NFC/QR y cierre.
 
 ### Etapa 5 hecha (Supabase conectado y verificado con el proyecto real del usuario)
 - Proyecto Supabase `hop-invaders` creado por el usuario; llaves en `config.js` (anon, pública por diseño).
