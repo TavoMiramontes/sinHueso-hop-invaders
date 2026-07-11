@@ -30,13 +30,15 @@ create policy "borrado solo dueno" on public.scores
   for delete to authenticated using (true);
 
 -- Configuración del juego (eventos especiales, Etapa 6)
+-- 'auto' = el juego elige el tema según su calendario anual;
+-- cualquier otro valor fuerza ese tema (los nombres viven en el JS,
+-- así que agregar eventos nuevos no requiere tocar la base de datos)
 create table if not exists public.config (
   id smallint primary key check (id = 1),
-  active_event text not null default 'none'
-    check (active_event in ('none','oktoberfest','halloween','navidad','independencia'))
+  active_event text not null default 'auto'
 );
 
-insert into public.config (id, active_event) values (1, 'none')
+insert into public.config (id, active_event) values (1, 'auto')
   on conflict (id) do nothing;
 
 alter table public.config enable row level security;

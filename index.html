@@ -139,7 +139,7 @@ const CFG = {
   dropSpeed: 245,         // velocidad del proyectil enemigo (px/s)
   bossAt: 40,             // segundo en que emerge el Rey Hueso
   bossHp: 42,             // vida del jefe
-  powerDropChance: 0.11,  // probabilidad de que un enemigo suelte power-up
+  powerDropChance: 0.08,  // probabilidad de que un enemigo suelte power-up
   powerTime: 8,           // duración de los power-ups temporales (s)
   shieldTime: 5,          // duración del escudo de espuma (s)
   laserTime: 3,           // duración del Láser de Lúpulo (s)
@@ -1188,8 +1188,8 @@ const THEMES = {
       lead: [659, 659, 659, 0, 659, 659, 659, 0, 659, 784, 523, 587, 659, 0, 0, 0],
       noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] },
   },
-  independencia: {
-    label: 'INDEPENDENCIA',
+  fiesta: {
+    label: 'FIESTA MEXICANA',
     bgTop: '#04141c', bgBottom: '#0d3f2a',
     mug: 1,                 // pilsner clara
     hat: sprHatCatrina,
@@ -1204,10 +1204,34 @@ const THEMES = {
 
 function curTheme() { return THEMES[ACTIVE_EVENT] || null; }
 
+// Calendario anual: con el evento en "auto" (lo normal), el juego elige
+// el tema según la fecha. Rangos [mes, día] inclusivos; navidad cruza
+// el año. El dueño puede forzar o apagar cualquier tema desde admin.html.
+const EVENT_CALENDAR = [
+  { ev: 'sanvalentin', from: [2, 10],  to: [2, 14]  },
+  { ev: 'aniversario', from: [6, 1],   to: [6, 30]  },   // Sin Hueso nació en junio 2023
+  { ev: 'fiesta',      from: [9, 1],   to: [9, 16]  },   // Independencia
+  { ev: 'oktoberfest', from: [9, 20],  to: [10, 5]  },
+  { ev: 'halloween',   from: [10, 24], to: [10, 31] },
+  { ev: 'muertos',     from: [11, 1],  to: [11, 2]  },
+  { ev: 'fiesta',      from: [11, 15], to: [11, 20] },   // Revolución
+  { ev: 'navidad',     from: [12, 1],  to: [1, 6]   },
+];
+function autoEvent(d) {
+  const md = (d.getMonth() + 1) * 100 + d.getDate();
+  for (const r of EVENT_CALENDAR) {
+    const a = r.from[0] * 100 + r.from[1], b = r.to[0] * 100 + r.to[1];
+    if (a <= b ? (md >= a && md <= b) : (md >= a || md <= b)) return r.ev;
+  }
+  return 'none';
+}
+
 let bgTheme = [];    // capa parallax extra del evento
 let ambient = [];    // clima: nieve o papel picado
 
 function applyTheme(ev) {
+  if (ev === 'auto') ev = autoEvent(new Date());
+  if (ev === 'independencia') ev = 'fiesta';   // nombre viejo guardado en la BD
   ACTIVE_EVENT = ev || 'none';
   const th = curTheme();
   EVENT_MUG = th ? th.mug : null;
@@ -2881,12 +2905,13 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-// Evento activo: por URL para previsualizar (?evento=halloween) o
-// el que el dueño haya activado en Supabase desde admin.html
+// Evento activo: por URL para previsualizar (?evento=halloween), o el que
+// diga Supabase ('auto' = calendario). Sin conexión, decide el calendario.
 const urlEvent = (typeof location !== 'undefined' &&
   new URLSearchParams(location.search).get('evento')) || null;
 if (urlEvent) applyTheme(urlEvent);
-else if (DB.client) DB.fetchEvent().then(ev => applyTheme(ev)).catch(() => {});
+else if (DB.client) DB.fetchEvent().then(ev => applyTheme(ev)).catch(() => applyTheme('auto'));
+else applyTheme('auto');
 
 // La tonada de la casa suena desde la pantalla de título
 // (arranca con el primer toque/tecla: los navegadores exigen un gesto)

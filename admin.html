@@ -82,14 +82,21 @@
     <div class="panel">
       <h2>🎃 EVENTO ESPECIAL ACTIVO</h2>
       <select id="eventSel">
-        <option value="none">Ninguno (juego normal)</option>
+        <option value="auto">⚙️ Automático — por calendario (recomendado)</option>
+        <option value="none">Ninguno (juego normal, aunque haya fecha)</option>
         <option value="oktoberfest">🍺 Oktoberfest</option>
         <option value="halloween">👻 Halloween</option>
         <option value="navidad">🎄 Navidad</option>
-        <option value="independencia">🇲🇽 Independencia</option>
+        <option value="fiesta">🇲🇽 Fiesta Mexicana</option>
       </select>
       <div class="msg" id="eventMsg"></div>
       <button id="btnEvent">GUARDAR EVENTO</button>
+      <div class="muted" style="margin-top:10px; line-height:1.5">
+        Calendario automático: 💘 San Valentín 10–14 feb · 🎂 Aniversario todo
+        junio · 🇲🇽 Fiesta Mexicana 1–16 sep y 15–20 nov · 🍺 Oktoberfest
+        20 sep–5 oct · 👻 Halloween 24–31 oct · 💀 Día de Muertos 1–2 nov ·
+        🎄 Navidad 1 dic–6 ene
+      </div>
     </div>
 
     <div class="panel">
@@ -163,7 +170,9 @@ $('btnLogout').addEventListener('click', async () => {
 // ---- Evento especial ----
 async function loadEvent() {
   const { data, error } = await db.from('config').select('active_event').eq('id', 1).single();
-  if (!error) $('eventSel').value = data.active_event;
+  if (error) return;
+  // 'independencia' es el nombre viejo del tema Fiesta Mexicana
+  $('eventSel').value = data.active_event === 'independencia' ? 'fiesta' : data.active_event;
 }
 
 $('btnEvent').addEventListener('click', async () => {
