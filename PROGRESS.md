@@ -4,11 +4,17 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 
 > *"Las cervezas sin sabor han invadido Sin Hueso. Tu misión es defender el último lote de cerveza artesanal."*
 
-## Estado actual: Etapas 1-6 en cierre — juego publicado 🚀
+## Estado actual: Etapas 1-7 completas — juego publicado 🚀 (falta 6.3: NFC)
 
-### Etapa 6 (en curso final)
-- 6.1 ✅ Temas de eventos: Oktoberfest/Halloween/Navidad/Independencia como paquetes de datos en `THEMES` (fondo, sombreros pixel, decoración parallax, clima nieve/papel picado, tarro fijo, música). Previsualización con `?evento=X`; producción vía admin.html→Supabase. Para eventos futuros: agregar entrada a THEMES + option en admin (y correr una vez `alter table public.config drop constraint config_active_event_check;` para no volver a tocar la BD).
-- 6.2 ✅ Publicado en GitHub Pages: repo público `TavoMiramontes/sinHueso-hop-invaders` (rama master), URL https://tavomiramontes.github.io/sinHueso-hop-invaders/ — esta es la URL para el tag NFC. GitHub Action `keepalive.yml` hace ping al ranking lunes y jueves para que Supabase Free no se pause. Nota: git en esta máquina requirió `http.sslBackend schannel`.
+### Etapa 7 hecha (calendario de eventos, 3 temas nuevos y ráfaga de puntos dobles)
+- 7.1 ✅ Calendario automático `EVENT_CALENDAR`: con `active_event='auto'` (el modo normal) el juego elige el tema por fecha, incluso sin conexión. Ventanas: 💘 San Valentín 10–14 feb · 🎂 Aniversario todo junio · 🇲🇽 Fiesta Mexicana 1–16 sep y 15–20 nov · 🍺 Oktoberfest 20 sep–5 oct · 👻 Halloween 24–31 oct · 💀 Día de Muertos 1–2 nov · 🎄 Navidad 1 dic–6 ene. El admin puede forzar cualquier tema o apagarlos ('none'). "Independencia" se renombró a "Fiesta Mexicana" (alias del valor viejo incluido). Power-ups bajados a 8% de drop (pedido del usuario).
+- 7.2 ✅ Temas nuevos: San Valentín (corazones/rosas/pétalos, red ale fija), Día de Muertos (cempasúchil/velas/papel picado, separado de Halloween a propósito), Aniversario (gorritos/globos/confeti, Las Mañanitas en chiptune, banner "★ N AÑOS DE SIN HUESO ★" calculado desde junio 2023, tarro aleatorio con `mug: null`). Motor: `ambientColors` por tema y `banner` para personalizar el letrero del título.
+- 7.3 ✅ Evento ráfaga ⚡ PUNTOS DOBLES: interruptor manual en admin.html (columna `double_points` en `config`, NO va en el calendario por decisión del dueño). Duplica todo (enemigos, racha, jefe +1500, bonos finales); avisos en título (parpadeante), HUD y arranque. Previsualización con `?doble=1`. Tope anti-trampa de 30k sigue holgado (~8k por partida doble). Verificado por el usuario contra su Supabase real.
+- Tests en scratchpad: calendar_test.js (25 casos de fechas), themes_test.js (arranque con los 7 temas + alias + auto), doble_test.js (duplicación unitaria + partida completa).
+
+### Etapa 6 (casi cerrada)
+- 6.1 ✅ Temas de eventos como paquetes de datos en `THEMES` (fondo, sombreros pixel, decoración parallax, clima nieve/papel picado, tarro fijo, música). Previsualización con `?evento=X`; producción vía admin.html→Supabase. Para un evento nuevo: entrada en THEMES + ventana en EVENT_CALENDAR (opcional) + option en admin.html + push. La BD ya no valida nombres de eventos (constraint eliminado por el usuario).
+- 6.2 ✅ Publicado en GitHub Pages: repo público `TavoMiramontes/sinHueso-hop-invaders` (rama master), URL https://tavomiramontes.github.io/sinHueso-hop-invaders/ — esta es la URL para el tag NFC. GitHub Action `keepalive.yml` hace ping al ranking lunes y jueves para que Supabase Free no se pause. Nota: git en esta máquina requirió `http.sslBackend schannel`; curl requiere `--ssl-no-revoke`.
 - 6.3 pendiente: prueba de punta a punta con NFC/QR y cierre.
 
 ### Etapa 5 hecha (Supabase conectado y verificado con el proyecto real del usuario)

@@ -52,8 +52,37 @@ Una sola vez, ~10 minutos:
 2. Pon tu correo y una contraseña. Marca **Auto Confirm User**.
 3. Abre `admin.html` (por http, ej. `http://localhost:8080/admin.html`) e inicia
    sesión con ese correo. Desde ahí puedes:
-   - 🎃 Activar/desactivar **eventos especiales** (los re-skins llegan en la Etapa 6).
+   - 🎃 Controlar los **eventos especiales** (ver sección siguiente).
+   - ⚡ Prender/apagar la ráfaga de **PUNTOS DOBLES**.
    - 🏆 **Borrar puntajes** individuales o todo el ranking.
+
+## Eventos especiales
+
+El juego tiene 7 temas re-skin (fondo, sombreros de los enemigos, decoración,
+clima y música propios). En el modo **⚙️ Automático** (el recomendado) se
+activan solos por calendario:
+
+| Tema | Fechas |
+|---|---|
+| 💘 San Valentín | 10–14 de febrero |
+| 🎂 Aniversario Sin Hueso | todo junio (el "N AÑOS" se calcula solo desde 2023) |
+| 🇲🇽 Fiesta Mexicana | 1–16 de septiembre y 15–20 de noviembre |
+| 🍺 Oktoberfest | 20 de septiembre – 5 de octubre |
+| 👻 Halloween | 24–31 de octubre |
+| 💀 Día de Muertos | 1–2 de noviembre |
+| 🎄 Navidad | 1 de diciembre – 6 de enero |
+
+Desde `admin.html` puedes **forzar** cualquier tema fuera de fecha o apagarlos
+todos ("Ninguno"). Aparte está la ráfaga **⚡ PUNTOS DOBLES**: un interruptor
+manual (no tiene fechas) que duplica todos los puntos mientras esté encendido —
+ideal para sorprender un día cualquiera en el taproom.
+
+Previsualizar sin tocar nada: agrega `?evento=halloween` (o cualquier tema) o
+`?doble=1` a la URL del juego; se pueden combinar con `&`.
+
+Para **agregar un evento nuevo** en el futuro: entrada en `THEMES` (index.html),
+ventana en `EVENT_CALENDAR` si lleva fechas, `<option>` en admin.html, y push.
+No hay que tocar la base de datos.
 
 ## Seguridad (por qué esto es seguro)
 - La llave `anon` es pública por diseño: lo que puede hacer está limitado por las

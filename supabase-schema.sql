@@ -35,8 +35,13 @@ create policy "borrado solo dueno" on public.scores
 -- así que agregar eventos nuevos no requiere tocar la base de datos)
 create table if not exists public.config (
   id smallint primary key check (id = 1),
-  active_event text not null default 'auto'
+  active_event text not null default 'auto',
+  -- evento ráfaga: puntos dobles mientras esté encendido (admin.html)
+  double_points boolean not null default false
 );
+
+-- si la tabla ya existía sin la columna, esta línea la agrega
+alter table public.config add column if not exists double_points boolean not null default false;
 
 insert into public.config (id, active_event) values (1, 'auto')
   on conflict (id) do nothing;

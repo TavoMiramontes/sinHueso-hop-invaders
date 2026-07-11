@@ -340,15 +340,17 @@ const DB = {
   },
   async fetchEvent() {
     const { data, error } = await this.withTimeout(
-      this.client.from('config').select('active_event').eq('id', 1).single(), 6000);
+      this.client.from('config').select('*').eq('id', 1).single(), 6000);
     if (error) throw error;
-    return data.active_event;
+    return data;
   },
 };
 DB.init();
 
 // Evento especial activo (el tema se aplica con applyTheme, más abajo)
 let ACTIVE_EVENT = 'none';
+// Ráfaga de puntos dobles: la prende y apaga el dueño desde admin.html
+let DOUBLE_POINTS = false;
 
 // ============================================================
 //  Salón de la Fama (Supabase con respaldo local automático)
@@ -1550,6 +1552,7 @@ function startGame() {
   spawnWave();
   S.nextWaveT = CFG.waveInterval;
   popups.push({ x: W / 2, y: H - 130, text: 'HOY SIRVES: ' + MUG_STYLES[player.styleIdx].name, life: 1.6 });
+  if (DOUBLE_POINTS) popups.push({ x: W / 2, y: H - 158, text: '★ ¡PUNTOS DOBLES! ★', life: 2 });
   MUSIC.set('main');
 }
 
@@ -1557,10 +1560,11 @@ function endGame(won) {
   S.state = 'end';
   S.won = won;
   if (won) {
-    S.score += 500;   // bonus por sobrevivir el minuto completo
+    const M = DOUBLE_POINTS ? 2 : 1;
+    S.score += 500 * M;   // bonus por sobrevivir el minuto completo
     // pintas restantes y tiempo de sobra contra el jefe también pagan
-    S.livesBonus = S.lives * CFG.livesBonus;
-    S.timeBonus = S.bossKilled ? S.bossTimeLeft * CFG.timeBonus : 0;
+    S.livesBonus = S.lives * CFG.livesBonus * M;
+    S.timeBonus = (S.bossKilled ? S.bossTimeLeft * CFG.timeBonus : 0) * M;
     S.score += S.livesBonus + S.timeBonus;
   }
   // muy rara vez el borracho trolea tu victoria (solo cosmético, jaja)
@@ -1820,8 +1824,9 @@ function update(dt) {
   S.noDmgT += dt;
   if (S.noDmgT >= 15) {
     S.noDmgT -= 15;
-    S.score += 100;
-    popups.push({ x: player.x, y: player.y - 40, text: 'RACHA +100', life: 1.1 });
+    const rachaPts = DOUBLE_POINTS ? 200 : 100;
+    S.score += rachaPts;
+    popups.push({ x: player.x, y: player.y - 40, text: 'RACHA +' + rachaPts, life: 1.1 });
     sfx('coin');
   }
 
@@ -2403,8 +2408,9 @@ function defeatBoss() {
   S.kills++;
   S.bossKilled = true;
   S.bossTimeLeft = Math.max(0, Math.ceil(S.matchLeft));   // tiempo de sobra = bonus al final
-  S.score += 750;   // 500 del jefe + 250 de bonus
-  popups.push({ x: boss.x, y: boss.y, text: '+750', life: 1.4 });
+  const bossPts = DOUBLE_POINTS ? 1500 : 750;   // 500 del jefe + 250 de bonus
+  S.score += bossPts;
+  popups.push({ x: boss.x, y: boss.y, text: '+' + bossPts, life: 1.4 });
   popups.push({ x: W / 2, y: boss.y - 55, text: '¡REY HUESO DERROTADO!', life: 1.8 });
   explode(boss.x, boss.y, PAL.purple, 26);
   explode(boss.x, boss.y, '#5a7186', 26);
@@ -2433,6 +2439,7 @@ function defeatBoss() {
 }
 
 function addScore(pts, x, y) {
+  if (DOUBLE_POINTS) pts *= 2;
   S.score += pts;
   popups.push({ x, y, text: '+' + pts, life: 0.7 });
 }
@@ -2748,6 +2755,7 @@ function draw() {
 function drawHUD() {
   drawText('PUNTOS ' + String(S.score).padStart(6, '0'), 12, 14, 2, PAL.foam);
   drawText('OLEADA ' + S.wave, 12, 34, 2, PAL.tealSoft);
+  if (DOUBLE_POINTS) drawText('¡PUNTOS DOBLES!', 12, 52, 1, PAL.yellow);
 
   // tiempo al centro (rojo parpadeante en los últimos 10s)
   const t = Math.max(0, Math.ceil(S.matchLeft));
@@ -2811,6 +2819,11 @@ function drawTitle() {
 
   drawText('LAS CERVEZAS SIN SABOR HAN INVADIDO.', W / 2, 340, 2, PAL.foam, 'center');
   drawText('DEFIENDE EL ÚLTIMO LOTE ARTESANAL.', W / 2, 362, 2, PAL.foam, 'center');
+
+  // evento ráfaga (parpadea para que nadie se lo pierda)
+  if (DOUBLE_POINTS && blink) {
+    drawText('★ ¡HOY PUNTOS DOBLES! ★', W / 2, 388, 2, PAL.yellow, 'center');
+  }
 
   // tabla de enemigos y puntos (clásico arcade)
   const rowsY = [415, 452, 492, 540];
@@ -3012,13 +3025,19 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-// Evento activo: por URL para previsualizar (?evento=halloween), o el que
-// diga Supabase ('auto' = calendario). Sin conexión, decide el calendario.
-const urlEvent = (typeof location !== 'undefined' &&
-  new URLSearchParams(location.search).get('evento')) || null;
+// Evento activo: por URL para previsualizar (?evento=halloween, ?doble=1),
+// o lo que diga Supabase ('auto' = calendario). Sin conexión, el calendario.
+const urlParams = typeof location !== 'undefined'
+  ? new URLSearchParams(location.search) : new URLSearchParams('');
+const urlEvent = urlParams.get('evento');
+if (urlParams.get('doble')) DOUBLE_POINTS = true;
 if (urlEvent) applyTheme(urlEvent);
-else if (DB.client) DB.fetchEvent().then(ev => applyTheme(ev)).catch(() => applyTheme('auto'));
-else applyTheme('auto');
+else if (DB.client) {
+  DB.fetchEvent().then(cfg => {
+    applyTheme(cfg.active_event);
+    if (!urlParams.get('doble')) DOUBLE_POINTS = !!cfg.double_points;
+  }).catch(() => applyTheme('auto'));
+} else applyTheme('auto');
 
 // La tonada de la casa suena desde la pantalla de título
 // (arranca con el primer toque/tecla: los navegadores exigen un gesto)

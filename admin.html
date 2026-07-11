@@ -103,6 +103,17 @@
     </div>
 
     <div class="panel">
+      <h2>⚡ RÁFAGA: PUNTOS DOBLES</h2>
+      <div class="muted" style="margin-bottom:10px">
+        Evento sorpresa: todos los puntos valen doble mientras esté activo.
+        Préndelo el día que quieras (independiente del tema del calendario)
+        y no olvides apagarlo. Los jugadores lo ven al recargar el juego.
+      </div>
+      <div class="msg" id="dobleMsg"></div>
+      <button id="btnDoble" disabled>...</button>
+    </div>
+
+    <div class="panel">
       <h2>🏆 PUNTAJES (top 50 histórico)</h2>
       <div class="msg" id="scoreMsg"></div>
       <table>
@@ -171,12 +182,48 @@ $('btnLogout').addEventListener('click', async () => {
 });
 
 // ---- Evento especial ----
+const SQL_DOBLE = 'alter table public.config add column if not exists double_points boolean not null default false;';
+let dobleOn = false;
+
 async function loadEvent() {
-  const { data, error } = await db.from('config').select('active_event').eq('id', 1).single();
+  const { data, error } = await db.from('config').select('*').eq('id', 1).single();
   if (error) return;
   // 'independencia' es el nombre viejo del tema Fiesta Mexicana
   $('eventSel').value = data.active_event === 'independencia' ? 'fiesta' : data.active_event;
+  if (!('double_points' in data)) {
+    $('dobleMsg').textContent = 'Falta un paso: corre esto en el SQL Editor de Supabase → ' + SQL_DOBLE;
+    $('btnDoble').textContent = 'NO DISPONIBLE';
+    return;
+  }
+  dobleOn = !!data.double_points;
+  paintDoble();
 }
+
+function paintDoble() {
+  const b = $('btnDoble');
+  b.disabled = false;
+  b.textContent = dobleOn ? 'DESACTIVAR PUNTOS DOBLES' : 'ACTIVAR PUNTOS DOBLES';
+  b.className = dobleOn ? 'danger' : '';
+  const m = $('dobleMsg');
+  m.className = dobleOn ? 'msg ok' : 'msg';
+  m.textContent = dobleOn ? '⚡ ACTIVO AHORA: los puntos valen doble.' : 'Apagado.';
+}
+
+$('btnDoble').addEventListener('click', async () => {
+  const m = $('dobleMsg');
+  m.className = 'msg';
+  m.textContent = 'Guardando...';
+  const { error } = await db.from('config')
+    .update({ double_points: !dobleOn }).eq('id', 1);
+  if (error) {
+    m.textContent = error.message.includes('double_points')
+      ? 'Falta un paso: corre esto en el SQL Editor de Supabase → ' + SQL_DOBLE
+      : 'Error: ' + error.message;
+    return;
+  }
+  dobleOn = !dobleOn;
+  paintDoble();
+});
 
 $('btnEvent').addEventListener('click', async () => {
   const m = $('eventMsg');
