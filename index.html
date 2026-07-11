@@ -272,7 +272,12 @@ const MUSIC = {
     if (!SND.ac || SND.muted || !this.track) return;
     const now = SND.ac.currentTime;
     if (this.nextT < now - 0.2) this.nextT = now + 0.05;   // resincroniza tras pausas/mute
-    const def = TRACKS[this.track];
+    let def = TRACKS[this.track];
+    // en evento especial, la tonada de la casa se tematiza
+    if (this.track === 'main') {
+      const th = curTheme();
+      if (th && th.music) def = th.music;
+    }
     // en el caos final el tema del jefe se acelera
     const bpm = def.bpm * (this.track === 'boss' && S.matchLeft <= 10 ? 1.18 : 1);
     const stepDur = 60 / bpm / 2;   // corcheas
@@ -342,11 +347,8 @@ const DB = {
 };
 DB.init();
 
-// Evento especial activo (los re-skins se implementan en la Etapa 6)
+// Evento especial activo (el tema se aplica con applyTheme, más abajo)
 let ACTIVE_EVENT = 'none';
-if (DB.client) {
-  DB.fetchEvent().then(ev => { ACTIVE_EVENT = ev; }).catch(() => {});
-}
 
 // ============================================================
 //  Salón de la Fama (Supabase con respaldo local automático)
@@ -1081,6 +1083,151 @@ let bgMid = initLayer([sprHopBg, sprWheatBg, sprKegBg, sprKettleBg, sprBottleBg]
 const drunk = { active: false, x: 0, y: 0, vx: 0, phase: 0, hicT: 0, nextT: 12 + Math.random() * 15 };
 
 // ============================================================
+//  EVENTOS ESPECIALES: temas re-skin activables desde admin.html
+//  Cada tema es un paquete de datos: colores de fondo, sombrero
+//  para los enemigos, decoración del parallax, clima ambiental,
+//  estilo fijo del tarro y variación musical.
+// ============================================================
+
+// Sombreros (se dibujan encima de cada enemigo)
+const sprHatOkt = makeSprite([
+  '.....F.',
+  '.GGGG..',
+  'GGGGGG.',
+  'DDDDDD.',
+], { G: '#3e8e4a', F: PAL.yellow, D: '#2c5e37' });
+const sprHatWitch = makeSprite([
+  '...P...',
+  '..PPP..',
+  '..PPP..',
+  '.PPPPP.',
+  'PPPPPPP',
+], { P: '#5a3c8a' });
+const sprHatSanta = makeSprite([
+  '.....WW',
+  '..RRRWW',
+  '.RRRR..',
+  'RRRRR..',
+  'WWWWWW.',
+], { R: PAL.red, W: PAL.foam });
+const sprHatCatrina = makeSprite([
+  '..DDDDD..',
+  '.RDDDDDY.',
+  'DDDDDDDDD',
+], { D: '#2a2035', R: PAL.red, Y: PAL.yellow });
+
+// Decoraciones flotantes por evento
+const sprPretzel = makeSprite([
+  '.PP...PP.',
+  'P..P.P..P',
+  'P...W...P',
+  'P..PWP..P',
+  '.PP.P.PP.',
+  'P...P...P',
+  '.PPP.PPP.',
+], { P: '#8a5a28', W: PAL.foam });
+const sprPumpkin = makeSprite([
+  '...GG...',
+  '.OOOOOO.',
+  'OkOOOOkO',
+  'OOOOOOOO',
+  '.OkkkkO.',
+  '..OOOO..',
+], { O: '#d97a1e', G: '#3e8e4a', k: PAL.dark });
+const sprGift = makeSprite([
+  '..YYY..',
+  'RRRYRRR',
+  'RRRYRRR',
+  'YYYYYYY',
+  'RRRYRRR',
+  'RRRYRRR',
+], { R: PAL.red, Y: PAL.yellow });
+const sprNopal = makeSprite([
+  '.R......',
+  'GGG..GG.',
+  'GGG..GG.',
+  'GGGGGGG.',
+  '.GGGGG..',
+  '..GGG...',
+  '..GGG...',
+], { G: '#3e8e4a', R: PAL.redHi });
+
+const THEMES = {
+  oktoberfest: {
+    label: 'OKTOBERFEST',
+    bgTop: '#170e02', bgBottom: '#4a3208',
+    mug: 0,                 // la casa sirve Märzen ámbar
+    hat: sprHatOkt,
+    decor: [sprPretzel],
+    music: { bpm: 124, bassType: 'triangle', bassVol: 0.3, leadVol: 0.13,
+      bass: [98, 0, 146.8, 0, 98, 0, 146.8, 0, 110, 0, 164.8, 0, 110, 0, 164.8, 0],
+      lead: [392, 0, 0, 440, 0, 0, 494, 0, 523, 0, 494, 0, 440, 0, 392, 0],
+      noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0] },
+  },
+  halloween: {
+    label: 'HALLOWEEN',
+    bgTop: '#0c0314', bgBottom: '#2e1038',
+    mug: 4,                 // stout negra
+    hat: sprHatWitch,
+    ghost: true,            // enemigos fantasmales semitransparentes
+    decor: [sprPumpkin],
+    music: { bpm: 96, bassType: 'triangle', bassVol: 0.32, leadVol: 0.12,
+      bass: [82.4, 0, 0, 0, 87.3, 0, 0, 0, 82.4, 0, 0, 0, 77.8, 0, 0, 0],
+      lead: [330, 0, 311, 0, 330, 0, 392, 0, 330, 0, 311, 0, 247, 0, 0, 0],
+      noise: [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0] },
+  },
+  navidad: {
+    label: 'NAVIDAD',
+    bgTop: '#020a18', bgBottom: '#0c2a4a',
+    mug: 3,                 // brown ale invernal
+    hat: sprHatSanta,
+    decor: [sprGift],
+    ambient: 'snow',
+    music: { bpm: 116, bassType: 'triangle', bassVol: 0.28, leadVol: 0.15,
+      bass: [130.8, 0, 98, 0, 130.8, 0, 98, 0, 110, 0, 87.3, 0, 98, 0, 98, 0],
+      lead: [659, 659, 659, 0, 659, 659, 659, 0, 659, 784, 523, 587, 659, 0, 0, 0],
+      noise: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0] },
+  },
+  independencia: {
+    label: 'INDEPENDENCIA',
+    bgTop: '#04141c', bgBottom: '#0d3f2a',
+    mug: 1,                 // pilsner clara
+    hat: sprHatCatrina,
+    decor: [sprNopal],
+    ambient: 'papel',       // papel picado cayendo
+    music: { bpm: 122, bassType: 'triangle', bassVol: 0.3, leadVol: 0.13,
+      bass: [110, 0, 164.8, 0, 110, 0, 164.8, 0, 98, 0, 146.8, 0, 98, 0, 146.8, 0],
+      lead: [440, 0, 523, 587, 659, 0, 659, 0, 587, 0, 523, 0, 440, 0, 0, 0],
+      noise: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] },
+  },
+};
+
+function curTheme() { return THEMES[ACTIVE_EVENT] || null; }
+
+let bgTheme = [];    // capa parallax extra del evento
+let ambient = [];    // clima: nieve o papel picado
+
+function applyTheme(ev) {
+  ACTIVE_EVENT = ev || 'none';
+  const th = curTheme();
+  EVENT_MUG = th ? th.mug : null;
+  bgTheme = (th && th.decor) ? initLayer(th.decor, 3, 22, 36) : [];
+  ambient = [];
+  if (th && th.ambient) {
+    for (let i = 0; i < 34; i++) {
+      ambient.push({
+        x: Math.random() * W, y: Math.random() * H,
+        vy: th.ambient === 'snow' ? 18 + Math.random() * 26 : 30 + Math.random() * 30,
+        phase: Math.random() * Math.PI * 2,
+        c: th.ambient === 'snow' ? PAL.foam : ['#3e8e4a', '#f4efe6', '#e04a3a'][i % 3],
+        w: th.ambient === 'snow' ? 2 : 4,
+        h: th.ambient === 'snow' ? 2 : 3,
+      });
+    }
+  }
+}
+
+// ============================================================
 //  Entrada: teclado + táctil/mouse
 // ============================================================
 const keys = {};
@@ -1416,8 +1563,16 @@ function update(dt) {
   }
   if (sing.flare > 0) sing.flare = Math.max(0, sing.flare - dt * 0.8);
 
-  // Capas parallax de la etiqueta y los insumos
-  for (const layer of [bgFar, bgMid]) {
+  // Clima del evento (nieve / papel picado)
+  for (const am of ambient) {
+    am.y += am.vy * dt;
+    am.phase += dt * 3;
+    am.x += Math.sin(am.phase) * (am.w > 2 ? 46 : 14) * dt;
+    if (am.y > H + 6) { am.y = -6; am.x = Math.random() * W; }
+  }
+
+  // Capas parallax de la etiqueta y los insumos (+ decoración del evento)
+  for (const layer of [bgFar, bgMid, bgTheme]) {
     for (const it of layer) {
       it.y += it.v * dt;
       it.phase += dt;
@@ -2180,7 +2335,14 @@ function hitPlayer() {
 function drawEnemySprite(type, x, y, flash) {
   const t = ETYPES[type];
   const spr = flash > 0 ? t.flash : t.spr;
+  const th = curTheme();
+  if (th && th.ghost) ctx.globalAlpha = 0.78;   // enemigos fantasmales
   ctx.drawImage(spr, (x - t.spr.width / 2) | 0, (y - t.spr.height / 2) | 0);
+  if (th && th.hat) {   // sombrero del evento
+    ctx.drawImage(th.hat, (x - th.hat.width / 2) | 0,
+                  (y - t.spr.height / 2 - th.hat.height + 5) | 0);
+  }
+  if (th && th.ghost) ctx.globalAlpha = 1;
 }
 
 // Círculo relleno en filas de 2px (look pixelado)
@@ -2261,7 +2423,19 @@ function drawParallax() {
     const sway = Math.sin(it.phase * 0.8) * 6;
     ctx.drawImage(it.spr, (it.x + sway - it.spr.width / 2) | 0, it.y | 0);
   }
+  // decoración del evento especial (pretzels, calabazas, regalos, nopales)
+  ctx.globalAlpha = 0.8;
+  for (const it of bgTheme) {
+    const sway = Math.sin(it.phase * 0.8) * 6;
+    ctx.drawImage(it.spr, (it.x + sway - it.spr.width / 2) | 0, it.y | 0);
+  }
   ctx.globalAlpha = 1;
+
+  // clima del evento (nieve / papel picado)
+  for (const am of ambient) {
+    ctx.fillStyle = am.c;
+    ctx.fillRect(am.x | 0, am.y | 0, am.w, am.h);
+  }
 
   // el borracho flotante
   if (drunk.active) {
@@ -2278,10 +2452,11 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * S.shake, (Math.random() - 0.5) * S.shake);
   }
 
-  // ---- Fondo ----
+  // ---- Fondo (el evento activo cambia los colores) ----
+  const th = curTheme();
   const grd = ctx.createLinearGradient(0, 0, 0, H);
-  grd.addColorStop(0, PAL.dark);
-  grd.addColorStop(1, PAL.bgTeal);
+  grd.addColorStop(0, th ? th.bgTop : PAL.dark);
+  grd.addColorStop(1, th ? th.bgBottom : PAL.bgTeal);
   ctx.fillStyle = grd;
   ctx.fillRect(-10, -10, W + 20, H + 20);
 
@@ -2497,6 +2672,12 @@ function drawTitle() {
   drawText('HOP', W / 2, 195, 9, PAL.amber, 'center');
   drawText('INVADERS', W / 2, 255, 9, PAL.amberHi, 'center');
 
+  // edición especial activa
+  const th = curTheme();
+  if (th) {
+    drawText('★ EDICIÓN ' + th.label + ' ★', W / 2, 318, 2, PAL.amberHi, 'center');
+  }
+
   drawText('LAS CERVEZAS SIN SABOR HAN INVADIDO.', W / 2, 340, 2, PAL.foam, 'center');
   drawText('DEFIENDE EL ÚLTIMO LOTE ARTESANAL.', W / 2, 362, 2, PAL.foam, 'center');
 
@@ -2699,6 +2880,13 @@ function resize() {
 }
 addEventListener('resize', resize);
 resize();
+
+// Evento activo: por URL para previsualizar (?evento=halloween) o
+// el que el dueño haya activado en Supabase desde admin.html
+const urlEvent = (typeof location !== 'undefined' &&
+  new URLSearchParams(location.search).get('evento')) || null;
+if (urlEvent) applyTheme(urlEvent);
+else if (DB.client) DB.fetchEvent().then(ev => applyTheme(ev)).catch(() => {});
 
 // La tonada de la casa suena desde la pantalla de título
 // (arranca con el primer toque/tecla: los navegadores exigen un gesto)
