@@ -312,11 +312,14 @@ const DB = {
   withTimeout(p, ms) {
     return Promise.race([p, new Promise((_, rj) => setTimeout(() => rj(new Error('timeout')), ms))]);
   },
-  sinceFor(tab) {   // fecha de corte de cada pestaña
+  sinceFor(tab) {   // fecha de corte de cada pestaña (null = sin corte)
     if (tab === 3) return null;
     const now = new Date();
     if (tab === 0) return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-    return new Date(Date.now() - (tab === 1 ? 7 : 30) * 864e5).toISOString();
+    if (tab === 1) return new Date(Date.now() - 7 * 864e5).toISOString();
+    // MES es el mes calendario, no 30 días rodantes: así el ranking arranca
+    // de cero el día 1 y hay un "campeón de septiembre" sin borrar nada.
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   },
   async fetchScores(tab) {
     let q = this.client.from('scores')
@@ -395,16 +398,12 @@ function saveScoreEntry(entry) {
   localStorage.setItem('sh_scores', JSON.stringify(all.slice(0, 500)));
 }
 
+// Respaldo local sin conexión: usa el mismo corte que la consulta remota
+// para que una pestaña muestre lo mismo con o sin internet.
 function periodScores(tab) {
-  const all = loadScores();
-  const now = new Date();
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const t7 = Date.now() - 7 * 864e5;
-  const t30 = Date.now() - 30 * 864e5;
-  return all.filter(e =>
-    tab === 0 ? e.t >= dayStart :
-    tab === 1 ? e.t >= t7 :
-    tab === 2 ? e.t >= t30 : true);
+  const since = DB.sinceFor(tab);
+  const cut = since ? Date.parse(since) : -Infinity;
+  return loadScores().filter(e => e.t >= cut);
 }
 
 // Filtro básico de groserías (normaliza acentos y leet: 0→O, 3→E...)
