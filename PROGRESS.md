@@ -4,7 +4,13 @@ Juego arcade retro 2D para la nanocervecería **Sin Hueso!**, pensado para jugar
 
 > *"Las cervezas sin sabor han invadido Sin Hueso. Tu misión es defender el último lote de cerveza artesanal."*
 
-## Estado actual: Etapas 1-7 completas — juego publicado 🚀 (falta 6.3: NFC)
+## Estado actual: Etapas 1-8 completas — juego publicado 🚀 (falta 6.3: NFC)
+
+### Etapa 8 hecha (huida a velocidad luz: bonus tras vencer al Rey Hueso)
+- 8.1 ✅ Idea del usuario. Antes, vencer al Rey con tiempo de sobra dejaba la pantalla vacía hasta el 0:00 (30 pts/s por esperar). Ahora la singularidad colapsa y la nave escapa a velocidad luz esquivando los restos de la batalla (rocas, huesos, cráneos, latas, botellas), SIN disparar. Estado `warp` en `index.html`: succión 1.3 s → escombros que caen girando con estela, la mayoría apuntados al tarro → "¡ESCAPASTE!" 1.4 s → pantalla final. Entra sólo con ≥3 s de sobra (`warpMinTime`); los 30 pts/s se siguen pagando y encima suma 10 pts por escombro esquivado, racha x2 a los 5 seguidos y x3 a los 10; chocar rompe la racha pero **nunca quita pinta ni partida** (ya está ganada). Línea nueva en el desglose final: "HUIDA A VELOCIDAD LUZ +N". Música propia (arpegios a 168 bpm). Atajo de prueba `?warp=1` (entra directo con 12 s).
+- 8.2 ✅ Afinado con el usuario en celular: primera vuelta "lentos y muy fácil" → 780 px/s, escombros cada 0.30→0.17 s, 75% apuntados. Marcador `ESQUIVADOS n · RACHA xK` a tamaño 2 (a tamaño 1 no se leía). Simulación sin navegador (`smoke.js` en scratchpad, stub de canvas, 60 fps): el que esquiva saca ~1080 en 12 s, el quieto ~130. Dos fugas cazadas sólo por simular: con x al azar el quieto esquivaba el 95%, y los escombros que atravesaban al tarro durante el parpadeo contaban como esquivados. Una huida perfecta de 12 s vale ~1300 (> Rey Hueso 750); si pesa de más, bajar `warpDodgePts`.
+- Ranking: la pestaña MES ahora es mes calendario (arranca el día 1) y cada pestaña muestra su periodo debajo ("SEPTIEMBRE 2026"). El usuario decidió NO borrar puntajes viejos (251 en dos meses contra 500 MB del plan Free); `supabase-limpieza-mensual.sql` (pg_cron, conserva top 10 + mes) queda escrito pero sin activar.
+- QR de marca para el juego y para Instagram en `qr/` (SVG + PNG), generados y verificados por `tools/qr_gen.py`.
 
 ### Etapa 7 hecha (calendario de eventos, 3 temas nuevos y ráfaga de puntos dobles)
 - 7.1 ✅ Calendario automático `EVENT_CALENDAR`: con `active_event='auto'` (el modo normal) el juego elige el tema por fecha, incluso sin conexión. Ventanas: 💘 San Valentín 10–14 feb · 🎂 Aniversario todo junio · 🇲🇽 Fiesta Mexicana 1–16 sep y 15–20 nov · 🍺 Oktoberfest 20 sep–5 oct · 👻 Halloween 24–31 oct · 💀 Día de Muertos 1–2 nov · 🎄 Navidad 1 dic–6 ene. El admin puede forzar cualquier tema o apagarlos ('none'). "Independencia" se renombró a "Fiesta Mexicana" (alias del valor viejo incluido). Power-ups bajados a 8% de drop (pedido del usuario).

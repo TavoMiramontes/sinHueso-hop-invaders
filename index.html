@@ -145,6 +145,19 @@ const CFG = {
   laserTime: 3,           // duración del Láser de Lúpulo (s)
   livesBonus: 150,        // puntos por pinta restante al ganar
   timeBonus: 30,          // puntos por segundo de sobra al vencer al jefe
+  // Huida a velocidad luz: bonus por vencer al jefe con tiempo de sobra.
+  // Sustituye la espera en pantalla vacía; los 30 pts/s de arriba se siguen
+  // pagando, esto va encima.
+  warpMinTime: 3,         // con menos segundos de sobra no vale la pena entrar
+  warpIntro: 1.3,         // succión de la singularidad antes del primer escombro
+  warpSpawn: 0.30,        // s entre escombros al inicio...
+  warpSpawnMin: 0.17,     // ...y tras 8 s de huida (se aprieta con el tiempo)
+  warpSpeed: 780,         // velocidad de los escombros (px/s)
+  warpAim: 0.75,          // fracción de escombros que apuntan al tarro
+  warpOutro: 1.4,         // s de "¡ESCAPASTE!" antes de la pantalla final
+  warpDodgePts: 10,       // puntos por escombro esquivado; la racha lo lleva a x3
+  // Primera prueba en celular (540 px/s, 0.42 s, 60% puntería): "lentos y
+  // muy fácil". Estos valores son la segunda vuelta.
 };
 
 // ============================================================
@@ -212,6 +225,8 @@ function sfx(name) {
     case 'bossin':   SND.tone(200, 55, 0.8, 'sawtooth', 0.7); SND.noise(0.7, 0.5, 0, 300); SND.tone(60, 45, 1.0, 'triangle', 0.8, 0.2); break;
     case 'bosshit':  SND.tone(140, 100, 0.06, 'square', 0.35); break;
     case 'bossdead': [523, 659, 784, 1047].forEach((f, i) => SND.tone(f, f, 0.12, 'square', 0.55, i * 0.11)); SND.noise(0.5, 0.7, 0, 900); break;
+    case 'warp':     SND.noise(1.4, 0.45, 0, 700); SND.tone(120, 960, 1.2, 'sawtooth', 0.35); break;
+    case 'dodge':    SND.tone(880, 1320, 0.05, 'square', 0.22); break;
     case 'chaos':    SND.tone(440, 440, 0.15, 'square', 0.55); SND.tone(310, 310, 0.15, 'square', 0.55, 0.16); SND.tone(440, 440, 0.15, 'square', 0.55, 0.32); break;
     case 'win':      [392, 523, 659, 784].forEach((f, i) => SND.tone(f, f, 0.14, 'square', 0.55, i * 0.13)); break;
     case 'lose':     [330, 262, 196, 131].forEach((f, i) => SND.tone(f, f, 0.2, 'triangle', 0.55, i * 0.18)); break;
@@ -243,6 +258,15 @@ const TRACKS = {
            82.4, 82.4, 116.5, 82.4, 98, 103.8, 110, 116.5],
     lead: [0, 0, 0, 0, 659, 0, 622, 0, 0, 0, 0, 0, 659, 698, 659, 622],
     noise: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0],
+  },
+  // huida a velocidad luz: arpegios rápidos hacia arriba, sin respiro
+  warp: {
+    bpm: 168, bassType: 'sawtooth', bassVol: 0.20, leadVol: 0.14,
+    bass: [110, 110, 110, 110, 130.8, 130.8, 130.8, 130.8,
+           146.8, 146.8, 146.8, 146.8, 164.8, 164.8, 146.8, 130.8],
+    lead: [440, 554, 659, 880, 523, 659, 784, 1047,
+           587, 740, 880, 1175, 659, 830, 988, 1319],
+    noise: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
   },
   // fanfarria de victoria (loop hasta la próxima partida)
   victory: {
@@ -896,6 +920,17 @@ const sprOrb = makeSprite([
   '.PP.',
 ], { P: PAL.purple, H: PAL.redHi });
 
+// Roca: escombro genérico de la huida a velocidad luz
+const sprRock = makeSprite([
+  '..GGG...',
+  '.GLLGG..',
+  'GLLGGGG.',
+  'GGGGGDGG',
+  'GGGDDDGG',
+  '.GGGDGG.',
+  '..GGGG..',
+], { G: '#5a7186', L: '#8fa3b3', D: '#34495a' });
+
 // ---- Iconos de power-ups ----
 const icoHop = makeSprite([
   '...GG..',
@@ -992,6 +1027,7 @@ const S = {
   troll: false, trollT: 0, trollHit: false,   // el borracho trolea tu victoria
   bossTimeLeft: 0,       // segundos de sobra al vencer al jefe
   livesBonus: 0, timeBonus: 0,   // desglose de bonos del final
+  warpPts: 0, warpDodged: 0,     // huida a velocidad luz: puntos y escombros esquivados
   saved: false,                               // ¿ya guardó su puntaje esta partida?
   lastName: localStorage.getItem('sh_name') || '',
   lastSaveId: 0,
@@ -1014,6 +1050,23 @@ const boss = {
   x: 0, y: 0, hp: 0, scale: 1, t: 0,
   phase: 0, atkT: 0, pat: false, burstN: 0, burstT: 0, flash: 0,
 };
+
+// Huida a velocidad luz (estado 'warp'): tras vencer al Rey Hueso la
+// singularidad colapsa y la nave escapa esquivando los restos de la batalla
+const warp = {
+  active: false,
+  t: 0,               // segundos dentro de la huida
+  speed: 0,           // 0..1, qué tan estiradas van las estrellas
+  debris: [],         // {x, y, vx, vy, spr, w, h, rot, spin, passed, dead}
+  spawnT: 0,
+  combo: 0,           // escombros esquivados seguidos
+  tier: 1,            // multiplicador de racha (1..3)
+  escapeShown: false, // ya avisó "¡ESCAPA!"
+  outro: 0,           // cuenta regresiva de "¡ESCAPASTE!" al acabarse el reloj
+};
+// Lo que succiona la singularidad junto contigo: restos del Rey Hueso y de
+// las cervezas industriales, más roca. Reutiliza sprites que ya existen.
+const WARP_DEBRIS = [sprRock, sprRock, sprRock, sprBone, sprSkull, sprCan, sprBottleBg];
 
 let pickups = [];     // power-ups cayendo {x, y, type, phase}
 let bullets = [];     // {x, y}
@@ -1546,6 +1599,7 @@ function startGame() {
   S.cataclysmed = false;
   S.troll = false; S.trollHit = false;
   S.bossTimeLeft = 0; S.livesBonus = 0; S.timeBonus = 0;
+  S.warpPts = 0; S.warpDodged = 0; warp.active = false; warp.debris = [];
   S.saved = false;
   player.x = W / 2;
   player.fireT = 0;
@@ -1564,6 +1618,13 @@ function startGame() {
   popups.push({ x: W / 2, y: H - 130, text: 'HOY SIRVES: ' + MUG_STYLES[player.styleIdx].name, life: 1.6 });
   if (DOUBLE_POINTS) popups.push({ x: W / 2, y: H - 158, text: '★ ¡PUNTOS DOBLES! ★', life: 2 });
   MUSIC.set('main');
+  // ?warp=1: entra directo a la huida para probarla sin tener que vencer
+  // al Rey Hueso con tiempo de sobra (mismo espíritu que ?evento=X y ?doble=1)
+  if (urlParams.get('warp')) {
+    S.matchLeft = 12; S.bossTimeLeft = 12; S.bossKilled = true;
+    boss.spawned = true; boss.state = 'dead';
+    startWarp();
+  }
 }
 
 function endGame(won) {
@@ -1680,6 +1741,21 @@ function beerX(be) {
 // ============================================================
 //  Update
 // ============================================================
+// Control del tarro, igual en la batalla y en la huida a velocidad luz
+function movePlayer(dt) {
+  let move = 0;
+  if (keys['ArrowLeft'] || keys['KeyA']) move -= 1;
+  if (keys['ArrowRight'] || keys['KeyD']) move += 1;
+  if (move !== 0) {
+    player.x += move * CFG.playerSpeed * dt;
+  } else if (pointerX !== null) {
+    // seguir al dedo con suavizado
+    player.x += (pointerX - player.x) * Math.min(1, CFG.touchFollow * dt);
+  }
+  player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
+  if (player.invuln > 0) player.invuln -= dt;
+}
+
 function update(dt) {
   S.time += dt;
   MUSIC.tick();
@@ -1690,8 +1766,9 @@ function update(dt) {
     b.drift += dt * 1.5;
     if (b.y < -10) { b.y = H + 10; b.x = Math.random() * W; }
   }
+  const starBoost = S.state === 'warp' ? 1 + 30 * warp.speed : 1;   // velocidad luz
   for (const st of stars) {
-    st.y += st.v * dt;
+    st.y += st.v * starBoost * dt;
     if (st.y > H + 4) { st.y = -4; st.x = Math.random() * W; }
   }
   for (const nb of nebulas) {
@@ -1798,6 +1875,9 @@ function update(dt) {
     return;
   }
 
+  // ---- Huida a velocidad luz ----
+  if (S.state === 'warp') { updateWarp(dt); return; }
+
   if (S.state !== 'playing') return;
 
   // ---- Reloj de partida ----
@@ -1811,17 +1891,7 @@ function update(dt) {
   }
 
   // ---- Jugador ----
-  let move = 0;
-  if (keys['ArrowLeft'] || keys['KeyA']) move -= 1;
-  if (keys['ArrowRight'] || keys['KeyD']) move += 1;
-  if (move !== 0) {
-    player.x += move * CFG.playerSpeed * dt;
-  } else if (pointerX !== null) {
-    // seguir al dedo con suavizado
-    player.x += (pointerX - player.x) * Math.min(1, CFG.touchFollow * dt);
-  }
-  player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
-  if (player.invuln > 0) player.invuln -= dt;
+  movePlayer(dt);
 
   // temporizadores de power-ups
   if (player.weaponT > 0) {
@@ -2446,6 +2516,126 @@ function defeatBoss() {
     if (!be.dead) { be.dead = true; killEnemy('beer', beerX(be), be.y, true); }
   }
   for (const dr of drops) dr.dead = true;
+
+  // con tiempo de sobra, la singularidad colapsa y empieza la huida
+  if (S.bossTimeLeft >= CFG.warpMinTime) startWarp();
+}
+
+// ============================================================
+//  Huida a velocidad luz
+// ============================================================
+function startWarp() {
+  S.state = 'warp';
+  warp.active = true;
+  warp.t = 0; warp.speed = 0;
+  warp.debris = []; warp.spawnT = 0;
+  warp.combo = 0; warp.tier = 1; warp.escapeShown = false; warp.outro = 0;
+  // se apaga todo lo de la batalla: aquí no se dispara, solo se esquiva
+  bullets = []; groups = []; divers = []; beers = []; drops = []; pickups = [];
+  player.weapon = 'normal'; player.weaponT = 0;
+  player.shieldT = 0; player.laserT = 0; player.invuln = 0;
+  S.tension = 0;
+  singularityFlare();
+  popups.push({ x: W / 2, y: 300, text: '¡LA SINGULARIDAD TE SUCCIONA!', life: 1.4 });
+  sfx('warp');
+  MUSIC.set('warp');
+}
+
+function spawnDebris() {
+  const spr = WARP_DEBRIS[(Math.random() * WARP_DEBRIS.length) | 0];
+  // La mayoría apunta a donde está el tarro: con x al azar, un jugador
+  // quieto en el centro esquivaba el 95% sin mover un dedo (probado en
+  // simulación). Tarda ~1.2 s en llegar, así que da tiempo de moverse.
+  const vx = (Math.random() - 0.5) * 60;
+  const vy = CFG.warpSpeed * (0.85 + Math.random() * 0.4);
+  const aimed = Math.random() < CFG.warpAim;
+  let x;
+  if (aimed) {
+    // descuenta la deriva lateral para que llegue de verdad a la altura del tarro
+    const target = player.x + (Math.random() - 0.5) * 40;
+    x = target - vx * ((player.y + 40) / vy);
+  } else {
+    x = 30 + Math.random() * (W - 60);
+  }
+  x = Math.max(30, Math.min(W - 30, x));
+  warp.debris.push({
+    x, y: -40, vx, vy,
+    spr, w: spr.width, h: spr.height,
+    rot: Math.random() * Math.PI * 2, spin: (Math.random() - 0.5) * 6,
+    passed: false, dead: false,
+  });
+}
+
+function updateWarp(dt) {
+  S.matchLeft -= dt;
+  S.survived = CFG.matchTime - Math.max(0, S.matchLeft);
+  warp.t += dt;
+  warp.speed = Math.min(1, warp.t / CFG.warpIntro);
+  movePlayer(dt);
+  S.shake = Math.max(S.shake, 1.5 + warp.speed * 2);   // la nave vibra a tope
+
+  if (warp.t >= CFG.warpIntro && warp.outro <= 0) {
+    if (!warp.escapeShown) {
+      warp.escapeShown = true;
+      popups.push({ x: W / 2, y: 300, text: '¡ESCAPA A VELOCIDAD LUZ!', life: 1.2 });
+    }
+    warp.spawnT -= dt;
+    if (warp.spawnT <= 0) {
+      // el intervalo se aprieta conforme avanza la huida
+      const k = Math.min(1, (warp.t - CFG.warpIntro) / 8);
+      warp.spawnT = CFG.warpSpawn + (CFG.warpSpawnMin - CFG.warpSpawn) * k;
+      spawnDebris();
+    }
+  }
+
+  for (const d of warp.debris) {
+    d.y += d.vy * dt; d.x += d.vx * dt; d.rot += d.spin * dt;
+    // esquivado: cruzó la línea del tarro sin tocarlo
+    if (!d.passed && d.y > player.y + 20) {
+      d.passed = true;
+      warp.combo++;
+      const tier = Math.min(3, 1 + Math.floor(warp.combo / 5));
+      const pts = CFG.warpDodgePts * tier * (DOUBLE_POINTS ? 2 : 1);
+      S.score += pts; S.warpPts += pts; S.warpDodged++;
+      popups.push({ x: d.x, y: player.y - 30, text: '+' + pts, life: 0.5 });
+      if (tier > warp.tier) {
+        warp.tier = tier;
+        popups.push({ x: W / 2, y: player.y - 70, text: '¡RACHA x' + tier + '!', life: 1 });
+        sfx('coin');
+      } else sfx('dodge');
+    }
+    // choque: se pierde la racha, nunca una pinta (la partida ya está ganada).
+    // Mientras parpadea tras un golpe, lo que lo atraviesa no cuenta ni
+    // como choque ni como esquive (si no, quedarse quieto también sumaba).
+    if (!d.passed &&
+        Math.abs(d.x - player.x) < (d.w + player.w) / 2 - 10 &&
+        Math.abs(d.y - player.y) < (d.h + player.h) / 2 - 8) {
+      d.passed = true;
+      if (player.invuln > 0) continue;
+      d.dead = true;
+      warp.combo = 0; warp.tier = 1;
+      player.invuln = 0.9;
+      S.shake = 10;
+      explode(d.x, d.y, PAL.amberHi, 14);
+      popups.push({ x: player.x, y: player.y - 40, text: '¡RACHA PERDIDA!', life: 0.9 });
+      sfx('phit');
+    }
+  }
+  warp.debris = warp.debris.filter(d => !d.dead && d.y < H + 40);
+
+  updateFx(dt);
+  // Al acabarse el reloj no se corta en seco: un respiro con "¡ESCAPASTE!"
+  // mientras pasan los últimos escombros, y luego la pantalla final.
+  if (S.matchLeft <= 0) {
+    if (warp.outro <= 0) {
+      warp.outro = CFG.warpOutro;
+      popups.push({ x: W / 2, y: 300, text: '¡ESCAPASTE!', life: CFG.warpOutro });
+      sfx('bossdead');
+    } else {
+      warp.outro -= dt;
+      if (warp.outro <= 0) endGame(true);
+    }
+  }
 }
 
 function addScore(pts, x, y) {
@@ -2609,7 +2799,13 @@ function draw() {
   ctx.fillRect(-10, -10, W + 20, H + 20);
 
   ctx.fillStyle = PAL.teal;
-  for (const st of stars) ctx.fillRect(st.x | 0, st.y | 0, st.s, st.s);
+  if (S.state === 'warp') {
+    // a velocidad luz las estrellas se estiran en líneas
+    const len = (6 + warp.speed * 46) | 0;
+    for (const st of stars) ctx.fillRect(st.x | 0, (st.y - len) | 0, st.s, len);
+  } else {
+    for (const st of stars) ctx.fillRect(st.x | 0, st.y | 0, st.s, st.s);
+  }
 
   drawParallax();
 
@@ -2625,6 +2821,12 @@ function draw() {
   // tinte rojizo de tensión (Rey Hueso en escena / caos final)
   if (S.tension > 0.01) {
     ctx.fillStyle = 'rgba(200,40,30,' + (S.tension * 0.18).toFixed(3) + ')';
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+  }
+
+  // tinte púrpura de la huida a velocidad luz
+  if (S.state === 'warp') {
+    ctx.fillStyle = 'rgba(138,95,192,' + (0.08 + warp.speed * 0.1).toFixed(3) + ')';
     ctx.fillRect(-10, -10, W + 20, H + 20);
   }
 
@@ -2713,6 +2915,18 @@ function draw() {
     }
   }
 
+  // ---- Escombros de la huida (giran y dejan una estela) ----
+  for (const d of warp.debris) {
+    ctx.save();
+    ctx.translate(d.x | 0, d.y | 0);
+    ctx.rotate(d.rot);
+    ctx.globalAlpha = 0.28;
+    ctx.drawImage(d.spr, -(d.w / 2) | 0, -(d.h / 2 + 16) | 0);
+    ctx.globalAlpha = 1;
+    ctx.drawImage(d.spr, -(d.w / 2) | 0, -(d.h / 2) | 0);
+    ctx.restore();
+  }
+
   // ---- Jugador (parpadea si es invulnerable; explotó en el cataclismo) ----
   if (S.state !== 'boom' && (player.invuln <= 0 || Math.floor(S.time * 12) % 2 === 0)) {
     const sprP = sprPlayers[player.styleIdx];
@@ -2769,8 +2983,15 @@ function drawHUD() {
 
   // tiempo al centro (rojo parpadeante en los últimos 10s)
   const t = Math.max(0, Math.ceil(S.matchLeft));
-  const timeCol = t <= 10 && S.state === 'playing' && (Math.floor(S.time * 3) % 2 === 0) ? PAL.red : PAL.amberHi;
+  const inMatch = S.state === 'playing' || S.state === 'warp';
+  const timeCol = t <= 10 && inMatch && (Math.floor(S.time * 3) % 2 === 0) ? PAL.red : PAL.amberHi;
   drawText('0:' + String(t).padStart(2, '0'), W / 2, 12, 3, timeCol, 'center');
+  if (S.state === 'warp') {
+    // a tamaño 1 no se leía en el celular; a tamaño 2 hay que acortar el texto
+    const racha = warp.tier > 1 ? ' · RACHA x' + warp.tier : '';
+    drawText('ESQUIVADOS ' + S.warpDodged + racha, W / 2, 44, 2,
+             warp.tier > 1 ? PAL.amberHi : PAL.foam, 'center');
+  }
 
   // pintas a la derecha
   for (let i = 0; i < S.lives; i++) {
@@ -2979,11 +3200,14 @@ function drawEnd() {
   if (S.bossKilled) { drawText('★ REY HUESO DERROTADO +750 ★', W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
   if (S.livesBonus > 0) { drawText('PINTAS RESTANTES +' + S.livesBonus, W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
   if (S.timeBonus > 0) { drawText('TIEMPO DE SOBRA +' + S.timeBonus, W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
+  if (S.warpPts > 0) { drawText('HUIDA A VELOCIDAD LUZ +' + S.warpPts, W / 2, by, 2, PAL.amberHi, 'center'); by += 17; }
 
+  // con cinco líneas de bonos el desglose llega a y=440; las estadísticas
+  // empiezan en 458 para no encimarse
   const acc = Math.min(100, S.shots > 0 ? Math.round(S.hits / S.shots * 100) : 0);
-  drawText('ENEMIGOS DERROTADOS: ' + S.kills, W / 2, 448, 2, PAL.foam, 'center');
-  drawText('TIEMPO: 0:' + String(Math.min(59, Math.floor(S.survived))).padStart(2, '0'), W / 2, 468, 2, PAL.foam, 'center');
-  drawText('PRECISIÓN: ' + acc + '%', W / 2, 488, 2, PAL.foam, 'center');
+  drawText('ENEMIGOS DERROTADOS: ' + S.kills, W / 2, 458, 2, PAL.foam, 'center');
+  drawText('TIEMPO: 0:' + String(Math.min(59, Math.floor(S.survived))).padStart(2, '0'), W / 2, 478, 2, PAL.foam, 'center');
+  drawText('PRECISIÓN: ' + acc + '%', W / 2, 498, 2, PAL.foam, 'center');
 
   if (S.score >= S.best && S.score > 0) {
     drawText('★ ¡NUEVO RÉCORD! ★', W / 2, 520, 2, PAL.amberHi, 'center');
