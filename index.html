@@ -359,6 +359,17 @@ let DOUBLE_POINTS = false;
 //  Salón de la Fama (Supabase con respaldo local automático)
 // ============================================================
 const FAME_TABS = ['HOY', 'SEMANA', 'MES', 'TOTAL'];
+const MESES = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO',
+  'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+// Qué periodo cubre cada pestaña, en palabras. Sin esto "MES" no dice si es
+// septiembre o los últimos 30 días, y nadie puede comprobar el ranking.
+function famePeriodLabel(tab) {
+  const now = new Date();
+  if (tab === 0) return now.getDate() + ' DE ' + MESES[now.getMonth()];
+  if (tab === 1) return 'ÚLTIMOS 7 DÍAS';
+  if (tab === 2) return MESES[now.getMonth()] + ' ' + now.getFullYear();
+  return 'DESDE SIEMPRE';
+}
 let fameTab = 0;
 let fameList = null;       // null = cargando
 let fameOffline = false;   // true = mostrando respaldo local por falta de conexión
@@ -2885,9 +2896,12 @@ function drawFame() {
     drawText(FAME_TABS[i], tx + tw / 2, ty + 10, 2, i === fameTab ? PAL.dark : PAL.tealSoft, 'center');
   }
 
-  // aviso de respaldo local cuando no hay conexión con el ranking global
+  // periodo de la pestaña; si no hay conexión, el aviso ocupa su lugar
+  // porque importa más saber que el ranking es solo de este dispositivo
   if (fameOffline) {
     drawText('SIN CONEXIÓN · RANKING SOLO DE ESTE DISPOSITIVO', W / 2, 158, 1, PAL.red, 'center');
+  } else {
+    drawText(famePeriodLabel(fameTab), W / 2, 158, 1, PAL.tealSoft, 'center');
   }
 
   const list = fameList;
